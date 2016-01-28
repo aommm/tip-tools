@@ -187,6 +187,11 @@ data Formula a = Formula
   }
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
+-- lemmas used
+-- coords on which we did induction
+type ProofSketch = ([Int],[Int])
+
+
 data Info a
   = Definition a
   | IH Int
