@@ -195,7 +195,7 @@ type ProofSketch = ([Int],[Int])
 data Info a
   = Definition a
   | IH Int
-  | Lemma Int
+  | Lemma Int (Maybe ProofSketch)
   | Projection a
   | DataDomain a
   | DataProjection a
