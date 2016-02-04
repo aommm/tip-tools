@@ -144,14 +144,30 @@ trDecl x =
                 ]
              return emptyTheory{ thy_funcs = fns }
 
-      A.Assert  role           expr -> trDecl (AssertPar role emptyPar expr)
-      AssertPar role (Par tvs) expr ->
-        do tvi <- mapM (addSym LocalId) tvs
-           mapM newTyVar tvi
-           let toRole AssertIt  = T.Assert
-               toRole AssertNot = Prove
-           fm <- Formula (toRole role) UserAsserted tvi <$> trExpr expr
-           return emptyTheory{ thy_asserts = [fm] }
+      A.Assert    role expr       -> trDecl (AssertPar role emptyPar expr)
+      AssertProof role expr proof -> trDecl (AssertParProof role emptyPar expr proof)
+      AssertPar role par expr -> do
+        let toRole AssertIt  = T.Assert
+            toRole AssertNot = Prove
+        trDeclAssert (toRole role) par expr Nothing
+      AssertParProof role par expr proof -> do
+        let toRole AssertItProof = T.Assert
+        trDeclAssert (toRole role) par expr (Just proof)
+
+-- Convert different Asserts to Formulas
+trDeclAssert :: Role -> Par -> A.Expr -> Maybe Proof -> CM (Theory Id)
+trDeclAssert role (Par tvs) expr mproof = do
+  tvi <- mapM (addSym LocalId) tvs
+  mapM newTyVar tvi
+  let info = case mproof of
+               Nothing -> UserAsserted
+               Just (Proof (IndVars is) (LemmasUsed ls)) ->
+                 let is' = map fromInteger is -- Integer -> Int
+                     ls' = map fromInteger ls
+                 in  Lemma 0 (Just (is',ls')) -- TODO: what index to use here?
+  fm <- Formula role info tvi <$> trExpr expr
+  return emptyTheory{ thy_asserts = [fm] }
+
 
 emptyPar :: Par
 emptyPar = Par []

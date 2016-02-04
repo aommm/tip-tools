@@ -38,6 +38,7 @@ library
     Tip.Pretty.Waldmeister
 
     Tip.Parser
+    Tip.Parser.PrintTIP
 
     Tip.Utils
     Tip.Writer
