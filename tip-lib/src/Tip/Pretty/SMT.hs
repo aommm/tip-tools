@@ -10,6 +10,8 @@ import Tip.Rename
 import Data.Maybe
 import Data.Char (isAlphaNum)
 
+import Debug.Trace
+
 expr,parExpr,parExprSep :: Doc -> [Doc] -> Doc
 parExpr s [] = parens s
 parExpr s xs = ("(" <> s) $\ (fsep xs <> ")")
@@ -33,15 +35,22 @@ validSMTChar x
   | x `elem` ("~!@$%^&*_-+=<>.?/" :: String) = [x]
   | otherwise                                = ""
 
+-- Print a theory (without proof output)
 ppTheory :: (Ord a,PrettyVar a) => Theory a -> Doc
-ppTheory (renameAvoiding smtKeywords validSMTChar -> Theory{..})
+ppTheory = ppTheory' False
+
+-- Print a theory, possibly with proof output
+ppTheory' :: (Ord a,PrettyVar a) => Bool -> Theory a -> Doc
+ppTheory' printProof (renameAvoiding smtKeywords validSMTChar -> Theory{..})
   = vcat
      (map ppSort thy_sorts ++
       map ppDatas (topsort thy_datatypes) ++
       map ppUninterp thy_sigs ++
       map ppFuncs (topsort thy_funcs) ++
-      map ppFormula thy_asserts ++
+      map ppFormula' thy_asserts ++
       ["(check-sat)"])
+   where ppFormula' = if printProof then ppFormulaProof else ppFormula
+
 
 ppSort :: PrettyVar a => Sort a -> Doc
 ppSort (Sort sort tvs) = parExpr "declare-sort" [ppVar sort, int (length tvs)]
@@ -94,9 +103,24 @@ ppFuncSig :: PrettyVar a => ([a] -> Doc -> Doc) -> Function a -> Doc -> Doc
 ppFuncSig parv (Function f tyvars args res_ty body) content =
   parv tyvars (ppVar f $\ fsep [ppLocals args, ppType res_ty, content])
 
-ppFormula :: (Ord a, PrettyVar a) => Formula a -> Doc
+ppFormula, ppFormulaProof :: (Ord a, PrettyVar a) => Formula a -> Doc
 ppFormula (Formula Prove _ tvs term)  = apply "assert-not" (par' tvs (ppExpr term))
 ppFormula (Formula Assert _ tvs term) = apply "assert"     (par' tvs (ppExpr term))
+
+-- pretty-printing with proofs, for proof output
+ppFormulaProof (Formula Assert (Lemma i (Just proof)) tvs term) = 
+  apply "assert-prove" (proofPar tvs (ppExpr term) (ppProof proof))
+-- ppFormulaProof (Formula Prove _ tvs term)  = apply "assert-not-prove" (par' tvs (ppExpr term)) 
+ppFormulaProof x = ppFormula x
+
+proofPar :: (PrettyVar a) => [a] -> Doc -> Doc -> Doc
+proofPar [] expr proof = apply (parens expr) (parens proof)
+proofPar xs expr proof = parExprSep "par" [parens (fsep (map ppVar xs)), parens expr, parens proof] 
+
+ppProof :: ProofSketch -> Doc
+ppProof p = "pro0f"
+-- TODO
+-- show p :: Doc
 
 ppExpr :: (Ord a, PrettyVar a) => Expr a -> Doc
 ppExpr e | Just (c,t,f) <- ifView e = parExpr "ite" (map ppExpr [c,t,f])
@@ -182,10 +206,12 @@ instance (Ord a,PrettyVar a) => Pretty (Decl a) where
   pp (SortDecl d)   = ppSort d
   pp (SigDecl d)    = ppUninterp d
   pp (FuncDecl d)   = ppFuncs [d]
-  pp (AssertDecl d) = ppFormula d
+  --pp (AssertDecl d) = ppFormula d
+  -- prettyprint with proof
+  pp (AssertDecl d) = ppFormulaProof d
 
 instance (Ord a,PrettyVar a) => Pretty (Theory a) where
-  pp = ppTheory
+  pp = ppTheory' True
 
 instance (Ord a, PrettyVar a) => Pretty (Expr a) where
   pp = ppExpr
