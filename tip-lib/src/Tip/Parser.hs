@@ -8,6 +8,11 @@ import Tip.Parser.AbsTIP (Start(..))
 import Tip.Parser.ErrM
 
 import Tip.Parser.Convert
+
+import qualified Tip.Parser.ParTIPProof as PP
+import qualified Tip.Parser.AbsTIPProof as PA (Start(..))
+import qualified Tip.Parser.ConvertProof as PC
+
 import Tip.Core
 
 -- | Parse from a file. If the string is empty or "-", then reads from stdin.
@@ -25,4 +30,11 @@ parse s =
   case pStart . myLexer $ s of
     Ok (Start ds) -> runCM (trDecls ds)
     Bad err       -> Left err
+
+-- | Parse, and get either an error or the string's theory
+parseProof :: String -> Either String (Theory Id)
+parseProof s =
+  case PP.pStart . PP.myLexer $ s of
+    Ok (PA.Start ds) -> runCM (PC.trDeclsProof ds)
+    Bad err          -> Left err
 
