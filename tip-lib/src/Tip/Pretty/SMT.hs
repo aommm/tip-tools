@@ -7,6 +7,8 @@ import Tip.Pretty
 import Tip.Types
 import Tip.Core (ifView, topsort, neg, exprType, makeGlobal, uses, collectLets)
 import Tip.Rename
+--import qualified Tip.Parser.PrintTIP (Print, prt, render)
+--import Tip.Parser.AbsTIP   (Proof(..), IndVars(..), LemmasUsed(..))
 import Data.Maybe
 import Data.Char (isAlphaNum)
 
@@ -104,23 +106,30 @@ ppFuncSig parv (Function f tyvars args res_ty body) content =
   parv tyvars (ppVar f $\ fsep [ppLocals args, ppType res_ty, content])
 
 ppFormula, ppFormulaProof :: (Ord a, PrettyVar a) => Formula a -> Doc
+
 ppFormula (Formula Prove _ tvs term)  = apply "assert-not" (par' tvs (ppExpr term))
 ppFormula (Formula Assert _ tvs term) = apply "assert"     (par' tvs (ppExpr term))
 
 -- pretty-printing with proofs, for proof output
+-- TODO: use Tip.Parser.Pretty, to ensure that what we print is
+-- (problem: cannot pp a string, since overlapping instances)
 ppFormulaProof (Formula Assert (Lemma i (Just proof)) tvs term) = 
-  apply "assert-prove" (proofPar tvs (ppExpr term) (ppProof proof))
+  apply "assert-proof" (proofPar tvs (ppExpr term) (ppProof proof))
 -- ppFormulaProof (Formula Prove _ tvs term)  = apply "assert-not-prove" (par' tvs (ppExpr term)) 
 ppFormulaProof x = ppFormula x
 
 proofPar :: (PrettyVar a) => [a] -> Doc -> Doc -> Doc
-proofPar [] expr proof = apply (parens expr) (parens proof)
-proofPar xs expr proof = parExprSep "par" [parens (fsep (map ppVar xs)), parens expr, parens proof] 
+proofPar [] expr proof = apply (parens expr) (proof)
+proofPar xs expr proof = parExprSep "par" [parens (fsep (map ppVar xs)), expr, proof] 
 
 ppProof :: ProofSketch -> Doc
-ppProof p = "pro0f"
--- TODO
--- show p :: Doc
+ppProof p@(lemmas,coords) = apply (pp lemmas) (pp coords)
+
+--proofToProof :: ProofSketch -> Proof
+--proofToProof (lemmas,coords) = Proof (IndVars coords') (LemmasUsed lemmas')
+--  where lemmas' = map toInteger lemmas
+--        coords' = map toInteger coords
+
 
 ppExpr :: (Ord a, PrettyVar a) => Expr a -> Doc
 ppExpr e | Just (c,t,f) <- ifView e = parExpr "ite" (map ppExpr [c,t,f])
