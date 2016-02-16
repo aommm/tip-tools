@@ -15,10 +15,10 @@ DefineFunPar.     Decl ::= "define-fun" "(" Par "(" FunDef ")" ")";
 DefineFunRec.     Decl ::= "define-fun-rec" FunDef;
 DefineFunRecPar.  Decl ::= "define-fun-rec" "(" Par "(" FunDef ")" ")";
 DefineFunsRec.    Decl ::= "define-funs-rec" "(" [FunDec] ")" "(" [Expr] ")";
-Assert.           Decl ::= Assertion Expr;
-AssertPar.        Decl ::= Assertion "(" Par Expr ")";
-AssertProof.      Decl ::= AssertionProof "(" Expr Proof ")";
-AssertParProof.   Decl ::= AssertionProof "(" Par Expr Proof ")";
+Assert.           Decl ::= Assertion Symbol Expr;
+AssertPar.        Decl ::= Assertion "(" Par Symbol Expr ")";
+AssertProof.      Decl ::= AssertionProof "(" Symbol Expr Proof ")";
+AssertParProof.   Decl ::= AssertionProof "(" Par Symbol Expr Proof ")";
 
 AssertIt.  Assertion ::= "assert";
 AssertNot. Assertion ::= "assert-not";

@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Tip.Parser.Convert where
+module Tip.Parser.ConvertProof where
 
-import Tip.Parser.AbsTIP as A -- from A ...
-import Tip.Core          as T -- ... to T
+import Tip.Parser.AbsTIPProof as A -- from A ...
+import Tip.Core               as T -- ... to T
 import Tip.Pretty
 import Tip.Pretty.SMT
 
@@ -81,12 +81,36 @@ addSym ik sym@(Symbol (p,s)) =
      lift $ modify (M.insert s (i,ik))
      return i
 
-trDecls :: [A.Decl] -> CM (Theory Id)
-trDecls [] = return emptyTheory
-trDecls (d:ds) =
+trDecls :: [A.Decl] -> CM (Library Id)
+trDecls ds = do
+  thy <- trDecls' ds
+  return $ thyToLib thy
+
+-- TODO nice monad thingy which complains on duplicate keys. Could also throw errors via that
+thyToLib :: Theory Id -> Library Id
+thyToLib thy =
+  Library
+  { lib_datatypes = datatypes M.empty thy
+  , lib_funcs = funcs M.empty thy
+  , lib_lemmas    = lemmas M.empty thy
+  }
+  where
+    datatypes m (Theory (d:ds) _ _ _ _) = M.insert (data_name d) d m
+    datatypes m (Theory []     _ _ _ _) = m
+    funcs m (Theory _ _ _ (f:fs) _) = M.insert (func_name f) f m
+    funcs m (Theory _ _ _ []     _) = m
+    lemmas m (Theory _ _ _ _ (f:fs)) = M.insert (formulaName f) f m
+    lemmas m (Theory _ _ _ [] _) = m
+    formulaName (Formula _ (Lemma _ (Just i) _) _ _)    = i
+    formulaName (Formula _ (UserAsserted (Just i)) _ _) = i
+    formulaName _ = error "invalid formula: formula lacked a name"
+
+trDecls' :: [A.Decl] -> CM (Theory Id)
+trDecls' [] = return emptyTheory
+trDecls' (d:ds) =
   do thy <- trDecl d
      withTheory thy $
-       do thy_rest <- trDecls ds
+       do thy_rest <- trDecls' ds
           return (thy `joinTheories` thy_rest)
 
 trDecl :: A.Decl -> CM (Theory Id)
@@ -144,28 +168,34 @@ trDecl x =
                 ]
              return emptyTheory{ thy_funcs = fns }
 
-      A.Assert    role expr       -> trDecl (AssertPar role emptyPar expr)
-      AssertProof role expr proof -> trDecl (AssertParProof role emptyPar expr proof)
-      AssertPar role par expr -> do
+      A.Assert    role s expr       -> trDecl (AssertPar role emptyPar s expr)
+      AssertProof role s expr proof -> trDecl (AssertParProof role emptyPar s expr proof)
+      AssertPar role par s expr -> do
         let toRole AssertIt  = T.Assert
             toRole AssertNot = Prove
-        trDeclAssert (toRole role) par expr Nothing
-      AssertParProof role par expr proof -> do
+        trDeclAssert (toRole role) par s expr Nothing
+      AssertParProof role par s expr proof -> do
         let toRole AssertItProof = T.Assert
-        trDeclAssert (toRole role) par expr (Just proof)
+        trDeclAssert (toRole role) par s expr (Just proof)
 
 -- Convert different Asserts to Formulas
--- TODO: 
-trDeclAssert :: Role -> Par -> A.Expr -> Maybe Proof -> CM (Theory Id)
-trDeclAssert role (Par tvs) expr mproof = do
+trDeclAssert :: Role -> Par -> Symbol -> A.Expr -> Maybe Proof -> CM (Theory Id)
+trDeclAssert role (Par tvs) s expr mproof = do
   tvi <- mapM (addSym LocalId) tvs
+  i <- addSym GlobalId s -- add lemma name
   mapM newTyVar tvi
   let info = case mproof of
-               Nothing -> UserAsserted Nothing
+               Nothing -> UserAsserted (Just i)
                Just (Proof (IndVars is) (LemmasUsed ls)) ->
                  let is' = map fromInteger is -- Integer -> Int
                      ls' = map fromInteger ls
-                 in  Lemma 0 Nothing (Just (is',ls')) -- TODO: what index to use here?
+                 in  Lemma 0 (Just i) (Just (is',ls')) -- TODO: what index to use here?
+
+  -- TODO: also check with OUR monad (can do that here?) that proof uses real symbols. trProof?
+  -- The lemmas should have been added before by previous trDeclAssert
+  -- The induction variables?
+  -- NO, this is not really ours. Library comes later, this is Theory
+
   fm <- Formula role info tvi <$> trExpr expr
   return emptyTheory{ thy_asserts = [fm] }
 

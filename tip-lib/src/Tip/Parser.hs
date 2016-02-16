@@ -31,10 +31,17 @@ parse s =
     Ok (Start ds) -> runCM (trDecls ds)
     Bad err       -> Left err
 
--- | Parse, and get either an error or the string's theory
-parseProof :: String -> Either String (Theory Id)
-parseProof s =
+-- | Parse, and get either an error or the string's library
+parseLibrary :: String -> Either String (Library PC.Id)
+parseLibrary s =
   case PP.pStart . PP.myLexer $ s of
-    Ok (PA.Start ds) -> runCM (PC.trDeclsProof ds)
-    Bad err          -> Left err
+    Ok (PA.Start ds) -> PC.runCM (PC.trDecls ds)
+    Bad err       -> Left err
+
+---- | Parse, and get either an error or the string's theory
+--parseProof :: String -> Either String (Theory Id)
+--parseProof s =
+--  case PP.pStart . PP.myLexer $ s of
+--    Ok (PA.Start ds) -> runCM (PC.trDeclsProof ds)
+--    Bad err          -> Left err
 

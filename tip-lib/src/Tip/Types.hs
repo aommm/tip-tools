@@ -9,6 +9,9 @@ import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
 import Data.Monoid
 
+import Data.Map (Map)
+import qualified Data.Map as M
+
 data Head a
   = Gbl (Global a)
   | Builtin Builtin
@@ -191,17 +194,40 @@ data Formula a = Formula
 -- coords on which we did induction
 type ProofSketch = ([Int],[Int])
 
+data Library a = Library
+  { lib_funcs :: Map a (Function a)
+  , lib_datatypes :: Map a (Datatype a)
+  , lib_lemmas :: Map a (Formula a)
+  -- lib_sigs
+  -- lib_sorts
+  }
+  deriving (Eq,Ord,Show)
+
+emptyLibrary :: Library a
+emptyLibrary = Library M.empty M.empty M.empty
+
+joinLibraries ::(Ord a) => Library a -> Library a -> Library a
+joinLibraries (Library a b c) (Library x y z) = Library (a `M.union` x) (b `M.union` y) (c `M.union` z)
+
+-- for fun
+instance Ord a => Monoid (Library a) where
+  mempty  = emptyLibrary
+  mappend = joinLibraries
+
+extendLibrary :: Theory a -> Library a -> Library a
+extendLibrary = undefined
+
 
 data Info a
   = Definition a
   | IH Int
-  | Lemma Int (Maybe ProofSketch)
+  | Lemma Int (Maybe a) (Maybe ProofSketch) -- name of lemma
   | Projection a
   | DataDomain a
   | DataProjection a
   | DataDistinct a
   | Defunction a
-  | UserAsserted
+  | UserAsserted (Maybe a) -- name of lemma
   | Unknown
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 

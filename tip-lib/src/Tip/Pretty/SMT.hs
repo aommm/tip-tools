@@ -113,7 +113,8 @@ ppFormula (Formula Assert _ tvs term) = apply "assert"     (par' tvs (ppExpr ter
 -- pretty-printing with proofs, for proof output
 -- TODO: use Tip.Parser.Pretty, to ensure that what we print is
 -- (problem: cannot pp a string, since overlapping instances)
-ppFormulaProof (Formula Assert (Lemma i (Just proof)) tvs term) = 
+-- TODO 2: print 'name'
+ppFormulaProof (Formula Assert (Lemma i (Just name) (Just proof)) tvs term) = 
   apply "assert-proof" (proofPar tvs (ppExpr term) (ppProof proof))
 -- ppFormulaProof (Formula Prove _ tvs term)  = apply "assert-not-prove" (par' tvs (ppExpr term)) 
 ppFormulaProof x = ppFormula x
