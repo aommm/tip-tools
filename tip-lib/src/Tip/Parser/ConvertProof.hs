@@ -86,25 +86,6 @@ trDecls ds = do
   thy <- trDecls' ds
   return $ thyToLib thy
 
--- TODO nice monad thingy which complains on duplicate keys. Could also throw errors via that
-thyToLib :: Theory Id -> Library Id
-thyToLib thy =
-  Library
-  { lib_datatypes = datatypes M.empty thy
-  , lib_funcs = funcs M.empty thy
-  , lib_lemmas    = lemmas M.empty thy
-  }
-  where
-    datatypes m (Theory (d:ds) _ _ _ _) = M.insert (data_name d) d m
-    datatypes m (Theory []     _ _ _ _) = m
-    funcs m (Theory _ _ _ (f:fs) _) = M.insert (func_name f) f m
-    funcs m (Theory _ _ _ []     _) = m
-    lemmas m (Theory _ _ _ _ (f:fs)) = M.insert (formulaName f) f m
-    lemmas m (Theory _ _ _ [] _) = m
-    formulaName (Formula _ (Lemma _ (Just i) _) _ _)    = i
-    formulaName (Formula _ (UserAsserted (Just i)) _ _) = i
-    formulaName _ = error "invalid formula: formula lacked a name"
-
 trDecls' :: [A.Decl] -> CM (Theory Id)
 trDecls' [] = return emptyTheory
 trDecls' (d:ds) =

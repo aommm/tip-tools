@@ -217,6 +217,33 @@ instance Ord a => Monoid (Library a) where
 extendLibrary :: Theory a -> Library a -> Library a
 extendLibrary = undefined
 
+-- TODO nice monad thingy which complains on duplicate keys. Could also throw errors via that
+thyToLib :: (Ord a, Show a) => Theory a -> Library a
+thyToLib thy =
+  Library
+  { lib_datatypes = datatypes M.empty thy
+  , lib_funcs = funcs M.empty thy
+  , lib_lemmas    = lemmas M.empty thy
+  }
+  where
+    datatypes m (Theory (d:ds) _ _ _ _) = M.insert (data_name d) d m
+    datatypes m (Theory []     _ _ _ _) = m
+    funcs m (Theory _ _ _ (f:fs) _) = M.insert (func_name f) f m
+    funcs m (Theory _ _ _ []     _) = m
+    lemmas m (Theory _ _ _ _ (f:fs)) = let (f',i) = formulaName f
+                                       in  M.insert i f' m
+    lemmas m (Theory _ _ _ [] _) = m
+    formulaName f@(Formula _ (Lemma _ (Just i) _) _ _)    = (f,i)
+    formulaName f@(Formula _ (UserAsserted (Just i)) _ _) = (f,i)
+    --formulaName (Formula a (Lemma b Nothing c) d e) =
+    --  let newName = "kebab"
+    --  in ((Formula a (Lemma b (Just newName) c) d e),newName)
+    --formulaName f@(Formula a (UserAsserted Nothing) b c) =
+    --  let newName = "kebab"
+    --  in ((Formula a (UserAsserted (Just newName)) b c), newName)
+
+    formulaName _ = error "invalid formula: formula lacked a name"
+
 
 data Info a
   = Definition a

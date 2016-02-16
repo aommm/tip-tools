@@ -165,7 +165,9 @@ trDeclAssert role (Par tvs) expr mproof = do
                Just (Proof (IndVars is) (LemmasUsed ls)) ->
                  let is' = map fromInteger is -- Integer -> Int
                      ls' = map fromInteger ls
-                 in  Lemma 0 Nothing (Just (is',ls')) -- TODO: what index to use here?
+                     -- TODO remove fake
+                     fakeId = Just $ Id "fake" 1337 Nothing
+                 in  Lemma 0 fakeId (Just (is',ls')) -- TODO: what index to use here?
   fm <- Formula role info tvi <$> trExpr expr
   return emptyTheory{ thy_asserts = [fm] }
 

@@ -11,6 +11,7 @@ import Tip.Rename
 --import Tip.Parser.AbsTIP   (Proof(..), IndVars(..), LemmasUsed(..))
 import Data.Maybe
 import Data.Char (isAlphaNum)
+import qualified Data.Map as M
 
 import Debug.Trace
 
@@ -42,6 +43,7 @@ ppTheory :: (Ord a,PrettyVar a) => Theory a -> Doc
 ppTheory = ppTheory' False
 
 -- Print a theory, possibly with proof output
+-- TODO: proof output should't be printed here anymore, never used
 ppTheory' :: (Ord a,PrettyVar a) => Bool -> Theory a -> Doc
 ppTheory' printProof (renameAvoiding smtKeywords validSMTChar -> Theory{..})
   = vcat
@@ -53,6 +55,14 @@ ppTheory' printProof (renameAvoiding smtKeywords validSMTChar -> Theory{..})
       ["(check-sat)"])
    where ppFormula' = if printProof then ppFormulaProof else ppFormula
 
+-- TODO do we need renameAvoiding smtKeywords validSMTChar???
+ppLibrary :: (Ord a,PrettyVar a) => Library a -> Doc
+ppLibrary (Library{..})
+  = vcat
+     (map ppDatas (topsort $ M.elems lib_datatypes) ++
+      map ppFuncs (topsort $ M.elems lib_funcs) ++
+      map ppFormulaProof (M.elems lib_lemmas) ++
+      ["(check-sat)"])
 
 ppSort :: PrettyVar a => Sort a -> Doc
 ppSort (Sort sort tvs) = parExpr "declare-sort" [ppVar sort, int (length tvs)]
@@ -115,13 +125,13 @@ ppFormula (Formula Assert _ tvs term) = apply "assert"     (par' tvs (ppExpr ter
 -- (problem: cannot pp a string, since overlapping instances)
 -- TODO 2: print 'name'
 ppFormulaProof (Formula Assert (Lemma i (Just name) (Just proof)) tvs term) = 
-  apply "assert-proof" (proofPar tvs (ppExpr term) (ppProof proof))
+  apply "assert-proof" (proofPar tvs (ppVar name) (ppExpr term) (ppProof proof))
 -- ppFormulaProof (Formula Prove _ tvs term)  = apply "assert-not-prove" (par' tvs (ppExpr term)) 
 ppFormulaProof x = ppFormula x
 
-proofPar :: (PrettyVar a) => [a] -> Doc -> Doc -> Doc
-proofPar [] expr proof = apply (parens expr) (proof)
-proofPar xs expr proof = parExprSep "par" [parens (fsep (map ppVar xs)), expr, proof] 
+proofPar :: (PrettyVar a) => [a] -> Doc -> Doc -> Doc -> Doc
+proofPar [] i expr proof = parExprSep (parens expr) [i, proof]
+proofPar xs i expr proof = parExprSep "par" [parens (fsep (map ppVar xs)), i, expr, proof] 
 
 ppProof :: ProofSketch -> Doc
 ppProof p@(lemmas,coords) = apply (pp lemmas) (pp coords)
@@ -221,7 +231,10 @@ instance (Ord a,PrettyVar a) => Pretty (Decl a) where
   pp (AssertDecl d) = ppFormulaProof d
 
 instance (Ord a,PrettyVar a) => Pretty (Theory a) where
-  pp = ppTheory' True
+  pp = ppTheory' False
+
+instance (Ord a,PrettyVar a) => Pretty (Library a) where
+  pp = ppLibrary
 
 instance (Ord a, PrettyVar a) => Pretty (Expr a) where
   pp = ppExpr
