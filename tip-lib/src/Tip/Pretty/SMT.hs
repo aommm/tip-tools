@@ -55,14 +55,17 @@ ppTheory' printProof (renameAvoiding smtKeywords validSMTChar -> Theory{..})
       ["(check-sat)"])
    where ppFormula' = if printProof then ppFormulaProof else ppFormula
 
--- TODO do we need renameAvoiding smtKeywords validSMTChar???
-ppLibrary :: (Ord a,PrettyVar a) => Library a -> Doc
-ppLibrary (Library{..})
+-- @fulhack here: Library->Theory, run renameAvoiding, Theory->Library
+ppLibrary :: (Ord a,PrettyVar a,Show a) => Library a -> Doc
+ppLibrary lib
   = vcat
-     (map ppDatas (topsort $ M.elems lib_datatypes) ++
-      map ppFuncs (topsort $ M.elems lib_funcs) ++
-      map ppFormulaProof (M.elems lib_lemmas) ++
+     (map ppDatas (topsort $ M.elems (lib_datatypes lib')) ++
+      map ppFuncs (topsort $ M.elems (lib_funcs lib')) ++
+      map ppFormulaProof (M.elems (lib_lemmas lib')) ++
       ["(check-sat)"])
+   where lib' = thyToLib thy'
+         thy' = renameAvoiding smtKeywords validSMTChar thy
+         thy  = libToThy lib
 
 ppSort :: PrettyVar a => Sort a -> Doc
 ppSort (Sort sort tvs) = parExpr "declare-sort" [ppVar sort, int (length tvs)]
@@ -233,7 +236,7 @@ instance (Ord a,PrettyVar a) => Pretty (Decl a) where
 instance (Ord a,PrettyVar a) => Pretty (Theory a) where
   pp = ppTheory' False
 
-instance (Ord a,PrettyVar a) => Pretty (Library a) where
+instance (Ord a,PrettyVar a,Show a) => Pretty (Library a) where
   pp = ppLibrary
 
 instance (Ord a, PrettyVar a) => Pretty (Expr a) where

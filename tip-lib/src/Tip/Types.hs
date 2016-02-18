@@ -204,6 +204,10 @@ type ProofSketch = ([Int],[Int])
 -- Library
 -- (Should maybe be moved to separate file)
 
+-- Thoughts: 
+-- Since we can always convert Library->Theory and Theory->Library,
+-- Library is not really existensberättigad
+
 -- Note regarding types of keys:
 -- Fns/datas indexed by their 'name'
 -- Lemmas indexed by string (so that we can generate new ones)
@@ -241,6 +245,13 @@ thyToLib thy = runLibrary (emptyLibrary, 0) $ do
                  mapM_ addDatatype (thy_datatypes thy) 
                  mapM_ addLemma (thy_asserts thy)
 
+-- | Creates a theory from a library
+libToThy :: (Ord a, Show a) => Library a -> Theory a
+libToThy lib = emptyTheory {
+  thy_datatypes = M.elems (lib_datatypes lib),
+  thy_funcs = M.elems (lib_funcs lib),
+  thy_asserts = M.elems (lib_lemmas lib)
+}
 
 type LibraryMonad a b = State (LibraryState a) b
 type LibraryState a = (Library a,Int)
