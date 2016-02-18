@@ -32,7 +32,7 @@ parse s =
     Bad err       -> Left err
 
 -- | Parse, and get either an error or the string's library
-parseLibrary :: String -> Either String (Library PC.Id)
+parseLibrary :: String -> Either String (Library Id)
 parseLibrary s =
   case PP.pStart . PP.myLexer $ s of
     Ok (PA.Start ds) -> PC.runCM (PC.trDecls ds)

@@ -15,6 +15,7 @@ import Data.Foldable (foldrM)
 import qualified Tip.Scope
 import Tip.Scope
 import Tip.Fresh
+import Tip.Parser.Convert (Id(..))
 
 import Data.List
 import Data.Function
@@ -31,33 +32,33 @@ runCM :: CM a -> Either String a
 runCM m = either (Left . show) Right $ runFresh (evalStateT (runScopeT m) M.empty)
 
 -- | Identifiers from parsed Tip syntax
-data Id = Id
-  { idString :: String
-  , idUnique :: Int
-  , idPos    :: Maybe (Int,Int)
-  -- ^ A source position of the identifier, if available
-  }
-  deriving Show
+--data Id = Id
+--  { idString :: String
+--  , idUnique :: Int
+--  , idPos    :: Maybe (Int,Int)
+--  -- ^ A source position of the identifier, if available
+--  }
+--  deriving Show
 
-instance Eq Id where
-  (==) = (==) `on` idUnique
+--instance Eq Id where
+--  (==) = (==) `on` idUnique
 
-instance Ord Id where
-  compare = compare `on` idUnique
+--instance Ord Id where
+--  compare = compare `on` idUnique
 
-instance PrettyVar Id where
-  varStr (Id s u _) = s -- ++ "_" ++ show u
+--instance PrettyVar Id where
+--  varStr (Id s u _) = s -- ++ "_" ++ show u
 
-instance Name Id where
-  freshNamed n
-    = do u <- fresh
-         return (Id n u Nothing)
+--instance Name Id where
+--  freshNamed n
+--    = do u <- fresh
+--         return (Id n u Nothing)
 
-  fresh = freshNamed "x"
+--  fresh = freshNamed "x"
 
-  refresh = refreshNamed ""
+--  refresh = refreshNamed ""
 
-  getUnique (Id _ u _) = u
+--  getUnique (Id _ u _) = u
 
 ppSym :: Symbol -> Doc
 ppSym (Symbol ((x,y),s)) = text s <+> "(" <> int x <> ":" <> int y <> ")"
