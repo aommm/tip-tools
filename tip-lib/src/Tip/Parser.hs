@@ -1,5 +1,5 @@
 -- | Parses the TIP format
-module Tip.Parser(parse,parseFile,Id,idPos) where
+module Tip.Parser(parse,parseFile,parseLibrary,Id,idPos) where
 
 import Data.Monoid
 

@@ -39,6 +39,7 @@ library
 
     Tip.Parser
     Tip.Parser.PrintTIP
+    Tip.Parser.PrintTIPProof
 
     Tip.Utils
     Tip.Writer
@@ -78,7 +79,11 @@ library
     Tip.Parser.AbsTIP
     Tip.Parser.LexTIP
     Tip.Parser.ParTIP
+    Tip.Parser.AbsTIPProof
+    Tip.Parser.LexTIPProof
+    Tip.Parser.ParTIPProof
     Tip.Parser.Convert
+    Tip.Parser.ConvertProof
 
   hs-source-dirs:      src
   include-dirs:        src
