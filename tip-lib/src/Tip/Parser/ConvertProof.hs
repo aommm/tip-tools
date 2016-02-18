@@ -163,7 +163,7 @@ trDecl x =
 trDeclAssert :: Role -> Par -> Symbol -> A.Expr -> Maybe Proof -> CM (Theory Id)
 trDeclAssert role (Par tvs) s expr mproof = do
   tvi <- mapM (addSym LocalId) tvs
-  i <- addSym GlobalId s -- add lemma name
+  let i = show s -- TODO prettyprint better?
   mapM newTyVar tvi
   let info = case mproof of
                Nothing -> UserAsserted (Just i)

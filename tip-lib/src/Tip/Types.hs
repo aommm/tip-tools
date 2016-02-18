@@ -9,6 +9,8 @@ import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
 import Data.Monoid
 
+import Control.Monad.State.Lazy
+
 import Data.Map (Map)
 import qualified Data.Map as M
 
@@ -194,10 +196,17 @@ data Formula a = Formula
 -- coords on which we did induction
 type ProofSketch = ([Int],[Int])
 
+
+-------------------------------------------------------------------------------
+-- Library
+-- (Should maybe be moved to separate file)
+
+-- Fns/datas indexed by their 'name'
+-- Lemmas indexed by string (so that we can generate new ones)
 data Library a = Library
   { lib_funcs :: Map a (Function a)
   , lib_datatypes :: Map a (Datatype a)
-  , lib_lemmas :: Map a (Formula a)
+  , lib_lemmas :: Map String (Formula a)
   -- lib_sigs
   -- lib_sorts
   }
@@ -219,42 +228,92 @@ extendLibrary = undefined
 
 -- TODO nice monad thingy which complains on duplicate keys. Could also throw errors via that
 thyToLib :: (Ord a, Show a) => Theory a -> Library a
-thyToLib thy =
-  Library
-  { lib_datatypes = datatypes M.empty thy
-  , lib_funcs = funcs M.empty thy
-  , lib_lemmas    = lemmas M.empty thy
-  }
-  where
-    datatypes m (Theory (d:ds) _ _ _ _) = M.insert (data_name d) d m
-    datatypes m (Theory []     _ _ _ _) = m
-    funcs m (Theory _ _ _ (f:fs) _) = M.insert (func_name f) f m
-    funcs m (Theory _ _ _ []     _) = m
-    lemmas m (Theory _ _ _ _ (f:fs)) = let (f',i) = formulaName f
-                                       in  M.insert i f' m
-    lemmas m (Theory _ _ _ [] _) = m
-    formulaName f@(Formula _ (Lemma _ (Just i) _) _ _)    = (f,i)
-    formulaName f@(Formula _ (UserAsserted (Just i)) _ _) = (f,i)
-    --formulaName (Formula a (Lemma b Nothing c) d e) =
-    --  let newName = "kebab"
-    --  in ((Formula a (Lemma b (Just newName) c) d e),newName)
-    --formulaName f@(Formula a (UserAsserted Nothing) b c) =
-    --  let newName = "kebab"
-    --  in ((Formula a (UserAsserted (Just newName)) b c), newName)
+thyToLib thy = runLibrary (emptyLibrary, 0) $ do
+                 mapM_ addFunction (thy_funcs thy)
+                 mapM_ addDatatype (thy_datatypes thy) 
+                 mapM_ addLemma (thy_asserts thy)
 
-    formulaName _ = error "invalid formula: formula lacked a name"
+type LibraryMonad a b = State (Library a,Int) b
+
+runLibrary :: (Library a,Int) -> LibraryMonad a b -> Library a
+runLibrary init s = fst $ execState s init
+
+addFunction :: (Show a, Eq a, Ord a) => Function a -> LibraryMonad a ()
+addFunction f = do
+  (lib,next) <- get
+  let name = (func_name f)
+  let fns = (lib_funcs lib)
+  let fns' =
+        case M.lookup name fns of
+          Nothing -> M.insert name f fns
+          Just f' ->
+            if f == f'
+              then fns
+              else error $ "cannot add function: function "++ show name ++" already exists, but with different definition"
+  put (lib {lib_funcs=fns'}, next)
+
+addDatatype :: (Show a, Eq a, Ord a) => Datatype a -> LibraryMonad a ()
+addDatatype d = do
+  (lib,next) <- get
+  let name = (data_name d)
+  let datas = (lib_datatypes lib)
+  let datas' =
+        case M.lookup name datas of
+          Nothing -> M.insert name d datas
+          Just d' ->
+            if d == d'
+              then datas
+              else error $ "cannot add datatype: datatype "++ show name ++" already exists, but with different definition"
+  put (lib {lib_datatypes=datas'}, next)
+
+addLemma :: (Show a, Eq a, Ord a) => Formula a -> LibraryMonad a ()
+addLemma f =  do
+  (lib,_) <- get
+  -- TODO: always call generateNewName, in case user supplied name is nonunique. call generateName or smth
+  name <- case fm_info f of
+    UserAsserted (Just name) -> return name
+    UserAsserted Nothing -> generateNewName
+    Lemma _ (Just name) _ -> return name
+    Lemma _ Nothing _ -> generateNewName
+  let info = case fm_info f of
+               UserAsserted _ -> UserAsserted (Just name)
+               Lemma a _ b    -> Lemma a (Just name) b
+      f' = f {fm_info = info}
+      lemmas = lib_lemmas lib
+      lemmas' = case M.lookup name lemmas of
+                  Just n  -> error "generateNewName failed, name is already occupied"
+                  Nothing -> M.insert name f' lemmas
+  (_,next) <- get -- was maybe updated by generateNewName
+  put (lib {lib_lemmas=lemmas'}, next)
+
+
+generateNewName :: LibraryMonad a String
+generateNewName = do
+  (lib,next) <- get
+  put (lib, next+1)
+  let name = "lemma-" ++ show next
+  -- TODO: inefficient, for each name we will loop through all lemmas to see if it's taken
+  -- In future: some kind init :: Library a -> LibraryMonad a ()
+  -- which loops through a library (probably read from file) and finds out the next free name.
+  -- not foolproof though
+  case M.lookup name (lib_lemmas lib) of
+    Nothing -> return name
+    Just _  -> generateNewName
+  
+-------------------------------------------------------------------------------
+
 
 
 data Info a
   = Definition a
   | IH Int
-  | Lemma Int (Maybe a) (Maybe ProofSketch) -- name of lemma
+  | Lemma Int (Maybe String) (Maybe ProofSketch) -- name of lemma
   | Projection a
   | DataDomain a
   | DataProjection a
   | DataDistinct a
   | Defunction a
-  | UserAsserted (Maybe a) -- name of lemma
+  | UserAsserted (Maybe String) -- name of lemma
   | Unknown
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
