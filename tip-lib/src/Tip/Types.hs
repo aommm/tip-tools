@@ -13,6 +13,9 @@ import Control.Monad.State.Lazy
 
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Maybe (catMaybes)
+
+import Text.Regex.TDFA
 
 data Head a
   = Gbl (Global a)
@@ -201,6 +204,7 @@ type ProofSketch = ([Int],[Int])
 -- Library
 -- (Should maybe be moved to separate file)
 
+-- Note regarding types of keys:
 -- Fns/datas indexed by their 'name'
 -- Lemmas indexed by string (so that we can generate new ones)
 data Library a = Library
@@ -223,17 +227,37 @@ instance Ord a => Monoid (Library a) where
   mempty  = emptyLibrary
   mappend = joinLibraries
 
-extendLibrary :: Theory a -> Library a -> Library a
-extendLibrary = undefined
+-- | Extends a library with the fns/datatypes/lemmas of a theory
+extendLibrary :: (Ord a, Show a) => Theory a -> Library a -> Library a
+extendLibrary thy lib = runLibrary (initLibrary lib) $ do
+                 mapM_ addFunction (thy_funcs thy)
+                 mapM_ addDatatype (thy_datatypes thy) 
+                 mapM_ addLemma (thy_asserts thy)
 
--- TODO nice monad thingy which complains on duplicate keys. Could also throw errors via that
+-- | Creates a library from a theory
 thyToLib :: (Ord a, Show a) => Theory a -> Library a
 thyToLib thy = runLibrary (emptyLibrary, 0) $ do
                  mapM_ addFunction (thy_funcs thy)
                  mapM_ addDatatype (thy_datatypes thy) 
                  mapM_ addLemma (thy_asserts thy)
 
-type LibraryMonad a b = State (Library a,Int) b
+
+type LibraryMonad a b = State (LibraryState a) b
+type LibraryState a = (Library a,Int)
+
+-- | Calculates a LibraryState given a Library
+-- (State includes next free variable and a library)
+initLibrary :: (Ord a, Show a, Eq a) => Library a -> LibraryState a
+initLibrary l = (l, next)
+  where next = let ks = M.keys (lib_lemmas l)
+                   regexs = map regexName ks
+                   matches = map (\(_,_,_,grps) -> grps) regexs
+                   numbers = (catMaybes.map getNumbers) matches
+               in maximum numbers
+        getNumbers [i] = Just (read i :: Int)
+        getNumbers _   = Nothing
+        regexName s = s =~ "lemma-([0-9]+)" :: (String,String,String,[String])
+
 
 runLibrary :: (Library a,Int) -> LibraryMonad a b -> Library a
 runLibrary init s = fst $ execState s init
@@ -286,7 +310,7 @@ addLemma f =  do
   (_,next) <- get -- was maybe updated by generateNewName
   put (lib {lib_lemmas=lemmas'}, next)
 
-
+-- | Returns a free name, and increments the internal name counter 
 generateNewName :: LibraryMonad a String
 generateNewName = do
   (lib,next) <- get

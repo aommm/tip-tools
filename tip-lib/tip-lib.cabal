@@ -93,7 +93,8 @@ library
                        pretty,
                        array,
                        optparse-applicative,
-                       structural-induction >= 0.3 && < 0.4
+                       structural-induction >= 0.3 && < 0.4,
+                       regex-tdfa
   build-tools:         alex, happy
 
 executable tip
