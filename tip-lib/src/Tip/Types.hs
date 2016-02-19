@@ -17,6 +17,8 @@ import Data.Maybe (catMaybes)
 
 import Text.Regex.TDFA
 
+import Debug.Trace
+
 data Head a
   = Gbl (Global a)
   | Builtin Builtin
@@ -208,6 +210,13 @@ type ProofSketch = ([Int],[Int])
 -- Since we can always convert Library->Theory and Theory->Library,
 -- Library is not really existensberättigad
 
+-- Thoughts regarding saving functions/datatypes/lemmas:
+-- These things contain references to things, e.g. variables, other functions, other lemmas
+-- What kind of things do we keep references to?
+-- How to keep internal consistency,
+-- when e.g. two different TIP problems refer to the same function,
+-- or when a lemma refers to another lemma?
+
 -- Note regarding types of keys:
 -- Fns/datas indexed by their 'name'
 -- Lemmas indexed by string (so that we can generate new ones)
@@ -264,7 +273,10 @@ initLibrary l = (l, next)
                    regexs = map regexName ks
                    matches = map (\(_,_,_,grps) -> grps) regexs
                    numbers = (catMaybes.map getNumbers) matches
-               in maximum numbers
+                   number = if null numbers
+                              then 0
+                              else maximum numbers + 1
+               in trace ("numbers:"++show numbers) $ number
         getNumbers [i] = Just (read i :: Int)
         getNumbers _   = Nothing
         regexName s = s =~ "lemma-([0-9]+)" :: (String,String,String,[String])
@@ -280,11 +292,12 @@ addFunction f = do
   let fns = (lib_funcs lib)
   let fns' =
         case M.lookup name fns of
-          Nothing -> M.insert name f fns
+          Nothing -> trace "add new function" $ M.insert name f fns
           Just f' ->
-            if f == f'
-              then fns
-              else error $ "cannot add function: function "++ show name ++" already exists, but with different definition"
+            if f == f' -- TODO: compare "normalised" variants of fns. Then != truly means !=
+              then trace "function existed" $ fns
+              else trace "function existed with different definition, doing nothing" $ fns
+              --else error $ "cannot add function: function "++ show name ++" already exists, but with different definition" ++ show f ++ "\n" ++ show f'
   put (lib {lib_funcs=fns'}, next)
 
 addDatatype :: (Show a, Eq a, Ord a) => Datatype a -> LibraryMonad a ()
@@ -294,10 +307,10 @@ addDatatype d = do
   let datas = (lib_datatypes lib)
   let datas' =
         case M.lookup name datas of
-          Nothing -> M.insert name d datas
+          Nothing -> trace "add new datatype" $ M.insert name d datas
           Just d' ->
             if d == d'
-              then datas
+              then trace "datatype existed" $ datas
               else error $ "cannot add datatype: datatype "++ show name ++" already exists, but with different definition"
   put (lib {lib_datatypes=datas'}, next)
 
@@ -305,6 +318,7 @@ addLemma :: (Show a, Eq a, Ord a) => Formula a -> LibraryMonad a ()
 addLemma f =  do
   (lib,_) <- get
   -- TODO: always call generateNewName, in case user supplied name is nonunique. call generateName or smth
+  -- TODO 2: check if lemma already exists, dude!
   name <- case fm_info f of
     UserAsserted (Just name) -> return name
     UserAsserted Nothing -> generateNewName
@@ -317,7 +331,7 @@ addLemma f =  do
       lemmas = lib_lemmas lib
       lemmas' = case M.lookup name lemmas of
                   Just n  -> error "generateNewName failed, name is already occupied"
-                  Nothing -> M.insert name f' lemmas
+                  Nothing -> trace "add new lemma" $ M.insert name f' lemmas
   (_,next) <- get -- was maybe updated by generateNewName
   put (lib {lib_lemmas=lemmas'}, next)
 
@@ -332,7 +346,7 @@ generateNewName = do
   -- which loops through a library (probably read from file) and finds out the next free name.
   -- not foolproof though
   case M.lookup name (lib_lemmas lib) of
-    Nothing -> return name
+    Nothing -> trace ("new name:"++show name) $ return name
     Just _  -> generateNewName
   
 -------------------------------------------------------------------------------

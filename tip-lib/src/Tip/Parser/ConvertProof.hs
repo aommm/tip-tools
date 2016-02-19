@@ -164,14 +164,14 @@ trDecl x =
 trDeclAssert :: Role -> Par -> Symbol -> A.Expr -> Maybe Proof -> CM (Theory Id)
 trDeclAssert role (Par tvs) s expr mproof = do
   tvi <- mapM (addSym LocalId) tvs
-  let i = show s -- TODO prettyprint better?
+  let (Symbol (_pos,name)) = s -- TODO prettyprint better?
   mapM newTyVar tvi
   let info = case mproof of
-               Nothing -> UserAsserted (Just i)
+               Nothing -> UserAsserted (Just name)
                Just (Proof (IndVars is) (LemmasUsed ls)) ->
                  let is' = map fromInteger is -- Integer -> Int
                      ls' = map fromInteger ls
-                 in  Lemma 0 (Just i) (Just (is',ls')) -- TODO: what index to use here?
+                 in  Lemma 0 (Just name) (Just (is',ls')) -- TODO: what index to use here?
 
   -- TODO: also check with OUR monad (can do that here?) that proof uses real symbols. trProof?
   -- The lemmas should have been added before by previous trDeclAssert
