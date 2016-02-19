@@ -197,9 +197,19 @@ data Formula a = Formula
   }
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
+getFmName :: Formula a -> Maybe String
+getFmName (Formula _ (UserAsserted name) _ _) = name
+getFmName (Formula _ (Lemma _ name _) _ _) = name
+getFmName _ = error "getFmName: can only get name from UserAsserted and Lemma"
+
+setFmName :: String -> Formula a -> Formula a
+setFmName name (Formula a (UserAsserted _) b c) = Formula a (UserAsserted (Just name)) b c
+setFmName name (Formula a (Lemma b _ c) d e) = Formula a (Lemma b (Just name) c) d e
+setFmName _ _ = error "setFmName: can only set name to UserAsserted and Lemma"
+
 -- lemmas used
 -- coords on which we did induction
-type ProofSketch = ([Int],[Int])
+type ProofSketch = ([String],[Int])
 
 
 -------------------------------------------------------------------------------
@@ -246,13 +256,15 @@ extendLibrary thy lib = runLibrary (initLibrary lib) $ do
                  mapM_ addFunction (thy_funcs thy)
                  mapM_ addDatatype (thy_datatypes thy) 
                  mapM_ addLemma (thy_asserts thy)
+                 translateLemmaRefs
 
 -- | Creates a library from a theory
 thyToLib :: (Ord a, Show a) => Theory a -> Library a
-thyToLib thy = runLibrary (emptyLibrary, 0) $ do
+thyToLib thy = runLibrary emptyLibraryState $ do
                  mapM_ addFunction (thy_funcs thy)
                  mapM_ addDatatype (thy_datatypes thy) 
                  mapM_ addLemma (thy_asserts thy)
+                 translateLemmaRefs
 
 -- | Creates a theory from a library
 libToThy :: (Ord a, Show a) => Library a -> Theory a
@@ -263,12 +275,21 @@ libToThy lib = emptyTheory {
 }
 
 type LibraryMonad a b = State (LibraryState a) b
-type LibraryState a = (Library a,Int)
+data LibraryState a = LibraryState
+  { libs_lib :: Library a
+  , libs_next :: Int
+  , libs_lemmaTranslations :: Map String String
+  -- ^ lemma translations to do, oldName->newName map
+  -- will be search-and-replaced in proof output
+  }
+
+emptyLibraryState :: LibraryState a
+emptyLibraryState = LibraryState emptyLibrary 0 M.empty
 
 -- | Calculates a LibraryState given a Library
 -- (State includes next free variable and a library)
 initLibrary :: (Ord a, Show a, Eq a) => Library a -> LibraryState a
-initLibrary l = (l, next)
+initLibrary l = LibraryState l next M.empty -- TODO empty translat?
   where next = let ks = M.keys (lib_lemmas l)
                    regexs = map regexName ks
                    matches = map (\(_,_,_,grps) -> grps) regexs
@@ -282,12 +303,12 @@ initLibrary l = (l, next)
         regexName s = s =~ "lemma-([0-9]+)" :: (String,String,String,[String])
 
 
-runLibrary :: (Library a,Int) -> LibraryMonad a b -> Library a
-runLibrary init s = fst $ execState s init
+runLibrary :: LibraryState a -> LibraryMonad a b -> Library a
+runLibrary init s = libs_lib $ execState s init
 
 addFunction :: (Show a, Eq a, Ord a) => Function a -> LibraryMonad a ()
 addFunction f = do
-  (lib,next) <- get
+  LibraryState lib next ts <- get
   let name = (func_name f)
   let fns = (lib_funcs lib)
   let fns' =
@@ -298,11 +319,11 @@ addFunction f = do
               then trace "function existed" $ fns
               else trace "function existed with different definition, doing nothing" $ fns
               --else error $ "cannot add function: function "++ show name ++" already exists, but with different definition" ++ show f ++ "\n" ++ show f'
-  put (lib {lib_funcs=fns'}, next)
+  put $ LibraryState (lib {lib_funcs=fns'}) next ts
 
 addDatatype :: (Show a, Eq a, Ord a) => Datatype a -> LibraryMonad a ()
 addDatatype d = do
-  (lib,next) <- get
+  LibraryState lib next ts <- get
   let name = (data_name d)
   let datas = (lib_datatypes lib)
   let datas' =
@@ -312,13 +333,40 @@ addDatatype d = do
             if d == d'
               then trace "datatype existed" $ datas
               else error $ "cannot add datatype: datatype "++ show name ++" already exists, but with different definition"
-  put (lib {lib_datatypes=datas'}, next)
+  put $ LibraryState (lib {lib_datatypes=datas'}) next ts
+  --put (lib {lib_datatypes=datas'}, next)
 
+-- TODO: we wanna be able to change the lemma, in case it already exists but with a different name.
+-- then we want to rename it. How to accomplish this?
+
+-- When we change a lemma's name (from either Just x or Nothing),
+-- we want to rename it in the rest of the theory (i.e. in proof output)
 addLemma :: (Show a, Eq a, Ord a) => Formula a -> LibraryMonad a ()
 addLemma f =  do
-  (lib,_) <- get
+  LibraryState lib _ _ <- get
   -- TODO: always call generateNewName, in case user supplied name is nonunique. call generateName or smth
+  
   -- TODO 2: check if lemma already exists, dude!
+  -- Outline:
+
+  -- if lemma has name:
+    -- if lemma with identical name and identical body exists:
+      -- do nothing
+    -- if lemma with identical name and nonidentical body exists:
+      -- goto 0
+    -- else, no identical name:
+      -- add lemma
+
+  -- else, lemma has no name:
+    -- goto 0
+
+  -- 0:
+    -- if lemma with identical body exists:
+      -- changeName to that name, add lemma
+    -- else, no identical body exists:
+      -- changeName to new name, add lemma
+
+
   name <- case fm_info f of
     UserAsserted (Just name) -> return name
     UserAsserted Nothing -> generateNewName
@@ -332,14 +380,37 @@ addLemma f =  do
       lemmas' = case M.lookup name lemmas of
                   Just n  -> error "generateNewName failed, name is already occupied"
                   Nothing -> trace "add new lemma" $ M.insert name f' lemmas
-  (_,next) <- get -- was maybe updated by generateNewName
-  put (lib {lib_lemmas=lemmas'}, next)
+  LibraryState _ next ts <- get -- was maybe updated by generateNewName
+  put $ LibraryState (lib {lib_lemmas=lemmas'}) next ts
 
--- | Returns a free name, and increments the internal name counter 
+-- | Change name of f to name, returning the new lemma
+-- If it already had a name, adds name change to 'to be translated' list
+-- TODO
+changeName :: (Show a, Eq a, Ord a) => Formula a -> String -> LibraryMonad a (Formula a)
+changeName f newName = do
+  let oldName = getFmName f
+      f' = setFmName newName f
+  case oldName of
+    Nothing -> return ()
+    -- Add pair to lemmaTranslations
+    Just n  -> do
+      state <- get
+      let translations = M.insert n newName (libs_lemmaTranslations state) 
+      put $ state {libs_lemmaTranslations = translations}
+  return f'
+
+--doesLemmaExist :: (Show a, Eq a, Ord a) => (Maybe String) -> Formula a -> LibraryMonad a Boolean
+--doesLemmaExist name f = do
+--  (lib,_) <- get
+--  let lemmas = lib_lemmas lib
+--  M.lookup name lemmas
+
+-- | Returns a free name, and increments the internal name counter
+-- TODO change?
 generateNewName :: LibraryMonad a String
 generateNewName = do
-  (lib,next) <- get
-  put (lib, next+1)
+  LibraryState lib next ts <- get
+  put $ LibraryState lib (next+1) ts
   let name = "lemma-" ++ show next
   -- TODO: inefficient, for each name we will loop through all lemmas to see if it's taken
   -- In future: some kind init :: Library a -> LibraryMonad a ()
@@ -349,6 +420,33 @@ generateNewName = do
     Nothing -> trace ("new name:"++show name) $ return name
     Just _  -> generateNewName
   
+-- | Translates all lemma proofs with the libs_lemmaTranslations translator, emptying it when done
+-- TODO
+translateLemmaRefs :: LibraryMonad a ()
+translateLemmaRefs = do
+  state <- get
+  let lemmas = (lib_lemmas . libs_lib) state
+  lemmas' <- sequence $ (flip M.mapWithKey) (libs_lemmaTranslations state) $ \from -> \to ->
+    return lemmas
+    -- TODO 
+    --forM lemmas (updateLemma from to) 
+
+
+  return ()
+
+  where
+    updateLemma :: String -> String -> Formula a -> Formula a
+    updateLemma from to (Formula a (Lemma b c mp) e f) = Formula a (Lemma b c (updateProof from to mp)) e f
+    updateProof :: String -> String -> Maybe ProofSketch -> Maybe ProofSketch 
+    updateProof from to (Just (lemmas, coords)) = Just (lemmas', coords)
+      where lemmas' = replace from to lemmas
+
+
+replace :: Eq a => a -> a -> [a] -> [a]
+replace from to (x:xs) | x == from = to : replace from to xs
+replace from to (x:xs) | otherwise = x  : replace from to xs
+replace _    _  [] = []
+
 -------------------------------------------------------------------------------
 
 

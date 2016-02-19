@@ -48,6 +48,10 @@ instance (Pretty a) => Pretty [a] where
 instance Pretty Int where
   pp = int
 
+-- TODO hacky. infinite recursion? 
+instance Pretty Doc where
+  pp = id
+
 instance Pretty () where
   pp _ = "()"
 

@@ -163,7 +163,7 @@ trDeclAssert role (Par tvs) expr mproof = do
   let info = case mproof of
                Nothing -> UserAsserted Nothing
                Just (Proof (IndVars is) (LemmasUsed ls)) ->
-                 let is' = map fromInteger is -- Integer -> Int
+                 let is' = error "Convert.hs should never parse things with proofs anymore" -- Integer -> Int
                      ls' = map fromInteger ls
                      -- TODO can we find nice lemma name here?
                  in  Lemma 0 Nothing (Just (is',ls')) -- TODO: what index to use here?

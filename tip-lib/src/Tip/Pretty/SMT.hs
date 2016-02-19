@@ -137,7 +137,11 @@ proofPar [] i expr proof = parExprSep (parens expr) [i, proof]
 proofPar xs i expr proof = parExprSep "par" [parens (fsep (map ppVar xs)), i, expr, proof] 
 
 ppProof :: ProofSketch -> Doc
-ppProof p@(lemmas,coords) = apply (pp lemmas) (pp coords)
+ppProof p@(lemmas,coords) = apply ppLemmas (pp coords)
+  where
+    -- TODO: Must be able to  [String] -> Doc  in a nicer way?
+    ppLemmas :: Doc
+    ppLemmas = pp (map text lemmas)
 
 --proofToProof :: ProofSketch -> Proof
 --proofToProof (lemmas,coords) = Proof (IndVars coords') (LemmasUsed lemmas')
