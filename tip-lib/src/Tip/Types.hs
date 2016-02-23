@@ -13,7 +13,7 @@ import Control.Monad.State.Lazy
 
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromJust)
 
 import Text.Regex.TDFA
 
@@ -200,12 +200,15 @@ data Formula a = Formula
 getFmName :: Formula a -> Maybe String
 getFmName (Formula _ (UserAsserted name) _ _) = name
 getFmName (Formula _ (Lemma _ name _) _ _) = name
-getFmName _ = error "getFmName: can only get name from UserAsserted and Lemma"
+getFmName _ = Nothing --error "getFmName: can only get name from UserAsserted and Lemma"
 
 setFmName :: String -> Formula a -> Formula a
 setFmName name (Formula a (UserAsserted _) b c) = Formula a (UserAsserted (Just name)) b c
 setFmName name (Formula a (Lemma b _ c) d e) = Formula a (Lemma b (Just name) c) d e
 setFmName _ _ = error "setFmName: can only set name to UserAsserted and Lemma"
+
+equalModInfo :: Eq a => Formula a -> Formula a -> Bool
+equalModInfo (Formula r1 _ t1 b1) (Formula r2 _ t2 b2) = r1 == r2 && t1 == t2 && b1 == b2
 
 -- lemmas used
 -- coords on which we did induction
@@ -306,6 +309,19 @@ initLibrary l = LibraryState l next M.empty -- TODO empty translat?
 runLibrary :: LibraryState a -> LibraryMonad a b -> Library a
 runLibrary init s = libs_lib $ execState s init
 
+getLemmas :: LibraryMonad a (Map String (Formula a))
+getLemmas = do
+  libState <- get
+  return $ (lib_lemmas . libs_lib) libState
+
+setLemmas :: Map String (Formula a) -> LibraryMonad a ()
+setLemmas lemmas = do
+  libState <- get
+  let lib = libs_lib libState
+      lib' = lib {lib_lemmas = lemmas}
+      libState' = libState {libs_lib = lib'}
+  put libState'
+
 addFunction :: (Show a, Eq a, Ord a) => Function a -> LibraryMonad a ()
 addFunction f = do
   LibraryState lib next ts <- get
@@ -334,58 +350,69 @@ addDatatype d = do
               then trace "datatype existed" $ datas
               else error $ "cannot add datatype: datatype "++ show name ++" already exists, but with different definition"
   put $ LibraryState (lib {lib_datatypes=datas'}) next ts
-  --put (lib {lib_datatypes=datas'}, next)
 
--- TODO: we wanna be able to change the lemma, in case it already exists but with a different name.
--- then we want to rename it. How to accomplish this?
 
--- When we change a lemma's name (from either Just x or Nothing),
--- we want to rename it in the rest of the theory (i.e. in proof output)
+-- | Adds a lemma.
+-- Checks if the lemma already exists. Maybe changes the lemma's name to a new or existing one
+-- If the lemma's name is changed, the name change is added to libs_lemmaTranslations
+
+-- if lemma has name:
+  -- if lemma with identical name and identical body exists:
+    -- do nothing
+  -- if lemma with identical name and nonidentical body exists:
+    -- goto checkAllLemmas
+  -- else, no identical name:
+    -- add lemma
+-- else, lemma has no name:
+  -- goto checkAllLemmas
+
+-- checkAllLemmas:
+  -- if lemma with identical body exists:
+    -- changeName to that name
+  -- else, no identical body exists:
+    -- changeName to new name, add lemma
+
 addLemma :: (Show a, Eq a, Ord a) => Formula a -> LibraryMonad a ()
 addLemma f =  do
-  LibraryState lib _ _ <- get
-  -- TODO: always call generateNewName, in case user supplied name is nonunique. call generateName or smth
-  
-  -- TODO 2: check if lemma already exists, dude!
-  -- Outline:
-
-  -- if lemma has name:
-    -- if lemma with identical name and identical body exists:
-      -- do nothing
-    -- if lemma with identical name and nonidentical body exists:
-      -- goto 0
-    -- else, no identical name:
-      -- add lemma
-
-  -- else, lemma has no name:
-    -- goto 0
-
-  -- 0:
-    -- if lemma with identical body exists:
-      -- changeName to that name, add lemma
-    -- else, no identical body exists:
-      -- changeName to new name, add lemma
-
-
-  name <- case fm_info f of
-    UserAsserted (Just name) -> return name
-    UserAsserted Nothing -> generateNewName
-    Lemma _ (Just name) _ -> return name
-    Lemma _ Nothing _ -> generateNewName
-  let info = case fm_info f of
-               UserAsserted _ -> UserAsserted (Just name)
-               Lemma a _ b    -> Lemma a (Just name) b
-      f' = f {fm_info = info}
+  libState <- get
+  let lib = libs_lib libState
       lemmas = lib_lemmas lib
-      lemmas' = case M.lookup name lemmas of
-                  Just n  -> error "generateNewName failed, name is already occupied"
-                  Nothing -> trace "add new lemma" $ M.insert name f' lemmas
-  LibraryState _ next ts <- get -- was maybe updated by generateNewName
-  put $ LibraryState (lib {lib_lemmas=lemmas'}) next ts
+  case getFmName f of
+      Just n  -> do
+        case M.lookup n lemmas of
+          Just f' | f `equalModInfo` f' -> trace ("add lemma with name "++show n ++",already existed, equal body") $ return ()
+                  | otherwise -> trace ("add lemma with name "++show n ++",already existed, nonequal body"++show f ++ show f') $ checkAllLemmas f
+          Nothing -> trace ("add lemma with name "++show n ++",not already existed") $ addLemma' f
+      Nothing -> trace ("add lemma with no name") $ checkAllLemmas f
+  where
+    -- Unconditionally add lemma
+    addLemma' f = do
+      libState <- get
+      let lib       = libs_lib libState
+          lemmas    = lib_lemmas lib
+          name      = fromJust $ getFmName f
+          lemmas'   = M.insert name f lemmas
+          libState' = libState { libs_lib = lib {lib_lemmas = lemmas'} }
+      put libState'
+    -- Loop through all lemmas, see if formula's body exists anywhere
+    checkAllLemmas f = do
+      libState <- get
+      let lemmas = lib_lemmas (libs_lib libState)
+          matchingLemmas = M.filter (equalModInfo f) lemmas
+      case M.size matchingLemmas of 
+        0 -> do
+          name <- generateNewName
+          f' <- changeName f name
+          trace ("  equal body not found, new name: "++show name) $ addLemma' f'
+        1 -> do
+          let name = head (M.keys matchingLemmas) -- existing name
+          changeName f name
+          trace ("  equal body found, name: "++show name) $ return ()
+        _ -> error $ "Multiple identical lemmas found, equal to "++show f 
+
 
 -- | Change name of f to name, returning the new lemma
 -- If it already had a name, adds name change to 'to be translated' list
--- TODO
 changeName :: (Show a, Eq a, Ord a) => Formula a -> String -> LibraryMonad a (Formula a)
 changeName f newName = do
   let oldName = getFmName f
@@ -406,16 +433,13 @@ changeName f newName = do
 --  M.lookup name lemmas
 
 -- | Returns a free name, and increments the internal name counter
--- TODO change?
 generateNewName :: LibraryMonad a String
 generateNewName = do
   LibraryState lib next ts <- get
   put $ LibraryState lib (next+1) ts
   let name = "lemma-" ++ show next
   -- TODO: inefficient, for each name we will loop through all lemmas to see if it's taken
-  -- In future: some kind init :: Library a -> LibraryMonad a ()
-  -- which loops through a library (probably read from file) and finds out the next free name.
-  -- not foolproof though
+  -- Should simply remove lookup, I think we can assume that it doesn't already exist
   case M.lookup name (lib_lemmas lib) of
     Nothing -> trace ("new name:"++show name) $ return name
     Just _  -> generateNewName
@@ -425,18 +449,21 @@ generateNewName = do
 translateLemmaRefs :: LibraryMonad a ()
 translateLemmaRefs = do
   state <- get
-  let lemmas = (lib_lemmas . libs_lib) state
-  lemmas' <- sequence $ (flip M.mapWithKey) (libs_lemmaTranslations state) $ \from -> \to ->
-    return lemmas
-    -- TODO 
+  lemmas <- getLemmas
+  let lemmas' = (flip M.map) lemmas $ \lemma ->
+        M.foldrWithKey updateLemma lemma (libs_lemmaTranslations state)
+  setLemmas lemmas'
+  state' <- get
+  put $ state' {libs_lemmaTranslations = M.empty}
+
+  --lemmas' <- sequence $ (flip M.mapWithKey) (libs_lemmaTranslations state) $ \from -> \to ->
+  --  return lemmas
     --forM lemmas (updateLemma from to) 
-
-
-  return ()
 
   where
     updateLemma :: String -> String -> Formula a -> Formula a
     updateLemma from to (Formula a (Lemma b c mp) e f) = Formula a (Lemma b c (updateProof from to mp)) e f
+    updateLemma from to f = f
     updateProof :: String -> String -> Maybe ProofSketch -> Maybe ProofSketch 
     updateProof from to (Just (lemmas, coords)) = Just (lemmas', coords)
       where lemmas' = replace from to lemmas
