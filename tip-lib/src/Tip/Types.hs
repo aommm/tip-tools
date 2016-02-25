@@ -245,21 +245,45 @@ data Library a = Library
 emptyLibrary :: Library a
 emptyLibrary = Library M.empty M.empty M.empty
 
-joinLibraries ::(Ord a) => Library a -> Library a -> Library a
-joinLibraries (Library a b c) (Library x y z) = Library (a `M.union` x) (b `M.union` y) (c `M.union` z)
+joinLibraries ::(Ord a, Show a, Eq a) => Library a -> Library a -> Library a
+joinLibraries l1 l2 = runLibrary (initLibrary l1) $ do
+  -- get next free name from l1
+  state1 <- get
+  let next1 = libs_next state1
+      state2 = runLibraryState (initLibrary l2) $ do
+                                                      -- set it to be next free name in l2
+                                                      state2 <- get
+                                                      put $ state2 {libs_next = next1}
+                                                      -- rename everything in l2 by removing all, then re-adding
+                                                      lemmas <- getLemmas
+                                                      trace ("Im doing it!"++show lemmas) $ setLemmas M.empty
+                                                      forM_ lemmas $ \lemma -> do
+                                                        name <- generateNewName
+                                                        lemma' <- trace ("new nam "++name) $ changeName lemma name
+                                                        addLemma lemma'
+                                                      translateLemmaRefs
+  -- last free name in l2 is now in l1 also
+  put state1 {libs_next = libs_next state2 }
+  -- join l1 and l2, by addFunction, addDatatype, addLemma into l1 from l2
+  let l2' = libs_lib state2
+  mapM_ addFunction (lib_funcs l2')
+  mapM_ addDatatype (lib_datatypes l2') 
+  mapM_ addLemma (lib_lemmas l2')
+  trace "joinLibraries end, translateLemmaRefs" $ translateLemmaRefs
+
 
 -- for fun
-instance Ord a => Monoid (Library a) where
+instance (Ord a,Show a,Eq a) => Monoid (Library a) where
   mempty  = emptyLibrary
   mappend = joinLibraries
 
 -- | Extends a library with the fns/datatypes/lemmas of a theory
 extendLibrary :: (Ord a, Show a) => Theory a -> Library a -> Library a
-extendLibrary thy lib = runLibrary (initLibrary lib) $ do
-                 mapM_ addFunction (thy_funcs thy)
-                 mapM_ addDatatype (thy_datatypes thy) 
-                 mapM_ addLemma (thy_asserts thy)
-                 translateLemmaRefs
+extendLibrary thy lib = 
+  let thyLib = thyToLib thy
+  in lib `joinLibraries` thyLib
+
+  --in runLibrary (initLibrary lib thyLib) $ do
 
 -- | Creates a library from a theory
 thyToLib :: (Ord a, Show a) => Theory a -> Library a
@@ -267,7 +291,7 @@ thyToLib thy = runLibrary emptyLibraryState $ do
                  mapM_ addFunction (thy_funcs thy)
                  mapM_ addDatatype (thy_datatypes thy) 
                  mapM_ addLemma (thy_asserts thy)
-                 translateLemmaRefs
+                 trace "thyToLib end, translateLemmaRefs" $ translateLemmaRefs
 
 -- | Creates a theory from a library
 libToThy :: (Ord a, Show a) => Library a -> Theory a
@@ -284,30 +308,39 @@ data LibraryState a = LibraryState
   , libs_lemmaTranslations :: Map String String
   -- ^ lemma translations to do, oldName->newName map
   -- will be search-and-replaced in proof output
+  , libs_lemmaQueue :: Map String (Formula a)
+  -- ^ lemmas which are in the process of being added
+  -- only these will be modified in search-and-replace stage
   }
 
 emptyLibraryState :: LibraryState a
-emptyLibraryState = LibraryState emptyLibrary 0 M.empty
+emptyLibraryState = LibraryState emptyLibrary 0 M.empty M.empty
 
--- | Calculates a LibraryState given a Library
+-- | Calculates a LibraryState from a Library
 -- (State includes next free variable and a library)
 initLibrary :: (Ord a, Show a, Eq a) => Library a -> LibraryState a
-initLibrary l = LibraryState l next M.empty -- TODO empty translat?
-  where next = let ks = M.keys (lib_lemmas l)
-                   regexs = map regexName ks
-                   matches = map (\(_,_,_,grps) -> grps) regexs
-                   numbers = (catMaybes.map getNumbers) matches
-                   number = if null numbers
+initLibrary l = emptyLibraryState {libs_next = next, libs_lib = l}
+  where next = nextFreeVar l
+
+nextFreeVar :: (Ord a, Show a, Eq a) => Library a -> Int
+nextFreeVar l = let ks = M.keys (lib_lemmas l)
+                    regexs = map regexName ks
+                    matches = map (\(_,_,_,grps) -> grps) regexs
+                    numbers = (catMaybes.map getNumbers) matches
+                    number = if null numbers
                               then 0
                               else maximum numbers + 1
-               in trace ("numbers:"++show numbers) $ number
-        getNumbers [i] = Just (read i :: Int)
-        getNumbers _   = Nothing
-        regexName s = s =~ "lemma-([0-9]+)" :: (String,String,String,[String])
-
+                in trace ("numbers:"++show numbers) $ number
+  where 
+    getNumbers [i] = Just (read i :: Int)
+    getNumbers _   = Nothing
+    regexName s = s =~ "lemma-([0-9]+)" :: (String,String,String,[String])
 
 runLibrary :: LibraryState a -> LibraryMonad a b -> Library a
 runLibrary init s = libs_lib $ execState s init
+
+runLibraryState :: LibraryState a -> LibraryMonad a b -> LibraryState a
+runLibraryState init s = execState s init
 
 getLemmas :: LibraryMonad a (Map String (Formula a))
 getLemmas = do
@@ -324,7 +357,7 @@ setLemmas lemmas = do
 
 addFunction :: (Show a, Eq a, Ord a) => Function a -> LibraryMonad a ()
 addFunction f = do
-  LibraryState lib next ts <- get
+  LibraryState lib next ts lq <- get
   let name = (func_name f)
   let fns = (lib_funcs lib)
   let fns' =
@@ -335,11 +368,11 @@ addFunction f = do
               then trace "function existed" $ fns
               else trace "function existed with different definition, doing nothing" $ fns
               --else error $ "cannot add function: function "++ show name ++" already exists, but with different definition" ++ show f ++ "\n" ++ show f'
-  put $ LibraryState (lib {lib_funcs=fns'}) next ts
+  put $ LibraryState (lib {lib_funcs=fns'}) next ts lq
 
 addDatatype :: (Show a, Eq a, Ord a) => Datatype a -> LibraryMonad a ()
 addDatatype d = do
-  LibraryState lib next ts <- get
+  LibraryState lib next ts lq <- get
   let name = (data_name d)
   let datas = (lib_datatypes lib)
   let datas' =
@@ -349,12 +382,13 @@ addDatatype d = do
             if d == d'
               then trace "datatype existed" $ datas
               else error $ "cannot add datatype: datatype "++ show name ++" already exists, but with different definition"
-  put $ LibraryState (lib {lib_datatypes=datas'}) next ts
+  put $ LibraryState (lib {lib_datatypes=datas'}) next ts lq
 
 
--- | Adds a lemma.
+-- | Adds a lemma to queue.
 -- Checks if the lemma already exists. Maybe changes the lemma's name to a new or existing one
 -- If the lemma's name is changed, the name change is added to libs_lemmaTranslations
+-- Changes should be committed
 
 -- if lemma has name:
   -- if lemma with identical name and identical body exists:
@@ -385,14 +419,13 @@ addLemma f =  do
           Nothing -> trace ("add lemma with name "++show n ++",not already existed") $ checkAllLemmas f (Just n)
       Nothing -> trace ("add lemma with no name") $ checkAllLemmas f Nothing
   where
-    -- Unconditionally add lemma
+    -- Unconditionally add lemma to queue
     addLemma' f = do
       libState <- get
-      let lib       = libs_lib libState
-          lemmas    = lib_lemmas lib
+      let lemmaQ    = libs_lemmaQueue libState
           name      = fromJust $ getFmName f
-          lemmas'   = M.insert name f lemmas
-          libState' = libState { libs_lib = lib {lib_lemmas = lemmas'} }
+          lemmaQ'   = M.insert name f lemmaQ
+          libState' = libState { libs_lemmaQueue = lemmaQ' }
       put libState'
     -- Loop through all lemmas, see if formula's body exists anywhere
     checkAllLemmas f mname = do
@@ -410,6 +443,8 @@ addLemma f =  do
           let name = head (M.keys matchingLemmas) -- existing name
           changeName f name
           trace ("  equal body found, name: "++show name) $ return ()
+          -- TODO: that formula and our formula may have been proven differently
+          -- which proof is the simplest? Or should we store both proofs?
         _ -> error $ "Multiple identical lemmas found, equal to "++show f 
 
 
@@ -437,8 +472,8 @@ changeName f newName = do
 -- | Returns a free name, and increments the internal name counter
 generateNewName :: LibraryMonad a String
 generateNewName = do
-  LibraryState lib next ts <- get
-  put $ LibraryState lib (next+1) ts
+  LibraryState lib next ts lq <- get
+  put $ LibraryState lib (next+1) ts lq
   let name = "lemma-" ++ show next
   -- TODO: inefficient, for each name we will loop through all lemmas to see if it's taken
   -- Should simply remove lookup, I think we can assume that it doesn't already exist
@@ -447,24 +482,25 @@ generateNewName = do
     Just _  -> generateNewName
   
 -- | Translates all lemma proofs with the libs_lemmaTranslations translator, emptying it when done
--- TODO
+-- Also transfers lemmas from queue to real lemmas
+-- TODO rename to 'commitLemmas' or something similar?
 translateLemmaRefs :: LibraryMonad a ()
 translateLemmaRefs = do
   state <- get
-  lemmas <- getLemmas
-  let lemmas' = (flip M.map) lemmas $ \lemma ->
+  let lemmaQ = libs_lemmaQueue state
+      lemmaQ' = (flip M.map) lemmaQ $ \lemma ->
         M.foldrWithKey updateLemma lemma (libs_lemmaTranslations state)
-  setLemmas lemmas'
-  state' <- get
-  put $ state' {libs_lemmaTranslations = M.empty}
-
-  --lemmas' <- sequence $ (flip M.mapWithKey) (libs_lemmaTranslations state) $ \from -> \to ->
-  --  return lemmas
-    --forM lemmas (updateLemma from to) 
+      lib = libs_lib state
+      lemmas' = M.union (lib_lemmas lib) lemmaQ'
+      lib' = lib {lib_lemmas = lemmas'}
+      state' = state {libs_lemmaTranslations = M.empty, libs_lemmaQueue = M.empty, libs_lib = lib'}
+  -- TODO: enough to update proof output? When are names updated (and keys of map for that matter)?
+  put state'
 
   where
     updateLemma :: String -> String -> Formula a -> Formula a
-    updateLemma from to (Formula a (Lemma b c mp) e f) = Formula a (Lemma b c (updateProof from to mp)) e f
+    updateLemma from to (Formula a (Lemma b c mp) e f) =mebeTrace $ Formula a (Lemma b c (updateProof from to mp)) e f
+      where mebeTrace =  (if from /= to then (trace $ "updating "++from++" to "++to) else id)
     updateLemma from to f = f
     updateProof :: String -> String -> Maybe ProofSketch -> Maybe ProofSketch 
     updateProof from to (Just (lemmas, coords)) = Just (lemmas', coords)
