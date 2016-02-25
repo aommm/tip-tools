@@ -362,7 +362,7 @@ addDatatype d = do
   -- if lemma with identical name and nonidentical body exists:
     -- goto checkAllLemmas
   -- else, no identical name:
-    -- add lemma
+    -- goto checkAllLemmas (?)
 -- else, lemma has no name:
   -- goto checkAllLemmas
 
@@ -381,9 +381,9 @@ addLemma f =  do
       Just n  -> do
         case M.lookup n lemmas of
           Just f' | f `equalModInfo` f' -> trace ("add lemma with name "++show n ++",already existed, equal body") $ return ()
-                  | otherwise -> trace ("add lemma with name "++show n ++",already existed, nonequal body"++show f ++ show f') $ checkAllLemmas f
-          Nothing -> trace ("add lemma with name "++show n ++",not already existed") $ addLemma' f
-      Nothing -> trace ("add lemma with no name") $ checkAllLemmas f
+                  | otherwise -> trace ("add lemma with name "++show n ++",already existed, nonequal body"{-++show f ++ show f'-} ) $ checkAllLemmas f Nothing
+          Nothing -> trace ("add lemma with name "++show n ++",not already existed") $ checkAllLemmas f (Just n)
+      Nothing -> trace ("add lemma with no name") $ checkAllLemmas f Nothing
   where
     -- Unconditionally add lemma
     addLemma' f = do
@@ -395,13 +395,15 @@ addLemma f =  do
           libState' = libState { libs_lib = lib {lib_lemmas = lemmas'} }
       put libState'
     -- Loop through all lemmas, see if formula's body exists anywhere
-    checkAllLemmas f = do
+    checkAllLemmas f mname = do
       libState <- get
       let lemmas = lib_lemmas (libs_lib libState)
           matchingLemmas = M.filter (equalModInfo f) lemmas
       case M.size matchingLemmas of 
         0 -> do
-          name <- generateNewName
+          name <- case mname of
+            Nothing   -> generateNewName
+            Just name -> return name
           f' <- changeName f name
           trace ("  equal body not found, new name: "++show name) $ addLemma' f'
         1 -> do
