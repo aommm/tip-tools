@@ -38,22 +38,15 @@ validSMTChar x
   | x `elem` ("~!@$%^&*_-+=<>.?/" :: String) = [x]
   | otherwise                                = ""
 
--- Print a theory (without proof output)
 ppTheory :: (Ord a,PrettyVar a) => Theory a -> Doc
-ppTheory = ppTheory' False
-
--- Print a theory, possibly with proof output
--- TODO: proof output should't be printed here anymore, never used
-ppTheory' :: (Ord a,PrettyVar a) => Bool -> Theory a -> Doc
-ppTheory' printProof (renameAvoiding smtKeywords validSMTChar -> Theory{..})
+ppTheory (renameAvoiding smtKeywords validSMTChar -> Theory{..})
   = vcat
      (map ppSort thy_sorts ++
       map ppDatas (topsort thy_datatypes) ++
       map ppUninterp thy_sigs ++
       map ppFuncs (topsort thy_funcs) ++
-      map ppFormula' thy_asserts ++
+      map ppFormula thy_asserts ++
       ["(check-sat)"])
-   where ppFormula' = if printProof then ppFormulaProof else ppFormula
 
 -- @fulhack here: Library->Theory, run renameAvoiding, Theory->Library
 ppLibrary :: (Ord a,PrettyVar a,Show a) => Library a -> Doc
@@ -126,7 +119,6 @@ ppFormula (Formula Assert _ tvs term) = apply "assert"     (par' tvs (ppExpr ter
 -- pretty-printing with proofs, for proof output
 -- TODO: use Tip.Parser.Pretty, to ensure that what we print is
 -- (problem: cannot pp a string, since overlapping instances)
--- TODO 2: print 'name'
 ppFormulaProof (Formula Assert (Lemma i (Just name) (Just proof)) tvs term) = 
   apply "assert-proof" (proofPar tvs (ppVar name) (ppExpr term) (ppProof proof))
 -- ppFormulaProof (Formula Prove _ tvs term)  = apply "assert-not-prove" (par' tvs (ppExpr term)) 
@@ -238,7 +230,7 @@ instance (Ord a,PrettyVar a) => Pretty (Decl a) where
   pp (AssertDecl d) = ppFormulaProof d
 
 instance (Ord a,PrettyVar a) => Pretty (Theory a) where
-  pp = ppTheory' False
+  pp = ppTheory
 
 instance (Ord a,PrettyVar a,Show a) => Pretty (Library a) where
   pp = ppLibrary
