@@ -252,18 +252,20 @@ joinLibraries l1 l2 = runLibrary (initLibrary l1) $ do
   let next1 = libs_next state1
       next2 = nextFreeVar l2
       next  = max next1 next2
+      -- TODO: remove gap in lemma names
+      -- now e.g. {l1 l2} + {l3 l4 l5} = {l1 l2 l6 l7 l8}
       state2 = runLibraryState (initLibrary l2) $ do
                                                       -- set it to be next free name in l2
                                                       state2 <- get
                                                       put $ state2 {libs_next = next}
                                                       -- rename everything in l2 by removing all, then re-adding
                                                       lemmas <- getLemmas
-                                                      trace ("Im doing it!"++(show.length) lemmas) $ setLemmas M.empty
+                                                      setLemmas M.empty
                                                       forM_ lemmas $ \lemma -> do
                                                         name <- generateNewName
-                                                        lemma' <- trace ("old nam"++(show.getFmName) lemma++",new nam "++name) $ changeName lemma name
+                                                        lemma' <- changeName lemma name
                                                         addLemma lemma'
-                                                      trace "done it" $ translateLemmaRefs
+                                                      commitLemmas
   -- last free name in l2 is now in l1 also
   put state1 {libs_next = libs_next state2 }
   -- join l1 and l2, by addFunction, addDatatype, addLemma into l1 from l2
@@ -271,8 +273,7 @@ joinLibraries l1 l2 = runLibrary (initLibrary l1) $ do
   mapM_ addFunction (lib_funcs l2')
   mapM_ addDatatype (lib_datatypes l2') 
   mapM_ addLemma (lib_lemmas l2')
-  trace "joinLibraries end, translateLemmaRefs" $ translateLemmaRefs
-
+  commitLemmas
 
 -- for fun
 instance (Ord a,Show a,Eq a) => Monoid (Library a) where
@@ -285,15 +286,13 @@ extendLibrary thy lib =
   let thyLib = thyToLib thy
   in lib `joinLibraries` thyLib
 
-  --in runLibrary (initLibrary lib thyLib) $ do
-
 -- | Creates a library from a theory
 thyToLib :: (Ord a, Show a) => Theory a -> Library a
 thyToLib thy = runLibrary emptyLibraryState $ do
                  mapM_ addFunction (thy_funcs thy)
                  mapM_ addDatatype (thy_datatypes thy) 
                  mapM_ addLemma (thy_asserts thy)
-                 trace "thyToLib end, translateLemmaRefs" $ translateLemmaRefs
+                 commitLemmas
 
 -- | Creates a theory from a library
 libToThy :: (Ord a, Show a) => Library a -> Theory a
@@ -324,20 +323,6 @@ initLibrary :: (Ord a, Show a, Eq a) => Library a -> LibraryState a
 initLibrary l = emptyLibraryState {libs_next = next, libs_lib = l}
   where next = nextFreeVar l
 
-nextFreeVar :: (Ord a, Show a, Eq a) => Library a -> Int
-nextFreeVar l = let ks = M.keys (lib_lemmas l)
-                    regexs = map regexName ks
-                    matches = map (\(_,_,_,grps) -> grps) regexs
-                    numbers = (catMaybes.map getNumbers) matches
-                    number = if null numbers
-                              then 0
-                              else maximum numbers + 1
-                in trace ("numbers:"++show numbers) $ number
-  where 
-    getNumbers [i] = Just (read i :: Int)
-    getNumbers _   = Nothing
-    regexName s = s =~ "lemma-([0-9]+)" :: (String,String,String,[String])
-
 runLibrary :: LibraryState a -> LibraryMonad a b -> Library a
 runLibrary init s = libs_lib $ execState s init
 
@@ -356,6 +341,20 @@ setLemmas lemmas = do
       lib' = lib {lib_lemmas = lemmas}
       libState' = libState {libs_lib = lib'}
   put libState'
+
+nextFreeVar :: (Ord a, Show a, Eq a) => Library a -> Int
+nextFreeVar l = let ks = M.keys (lib_lemmas l)
+                    regexs = map regexName ks
+                    matches = map (\(_,_,_,grps) -> grps) regexs
+                    numbers = (catMaybes.map getNumbers) matches
+                    number = if null numbers
+                              then 0
+                              else maximum numbers + 1
+                in trace ("numbers:"++show numbers) $ number
+  where 
+    getNumbers [i] = Just (read i :: Int)
+    getNumbers _   = Nothing
+    regexName s = s =~ "lemma-([0-9]+)" :: (String,String,String,[String])
 
 addFunction :: (Show a, Eq a, Ord a) => Function a -> LibraryMonad a ()
 addFunction f = do
@@ -465,12 +464,6 @@ changeName f newName = do
       put $ state {libs_lemmaTranslations = translations}
   return f'
 
---doesLemmaExist :: (Show a, Eq a, Ord a) => (Maybe String) -> Formula a -> LibraryMonad a Boolean
---doesLemmaExist name f = do
---  (lib,_) <- get
---  let lemmas = lib_lemmas lib
---  M.lookup name lemmas
-
 -- | Returns a free name, and increments the internal name counter
 generateNewName :: LibraryMonad a String
 generateNewName = do
@@ -486,8 +479,8 @@ generateNewName = do
 -- | Translates all lemma proofs with the libs_lemmaTranslations translator, emptying it when done
 -- Also transfers lemmas from queue to real lemmas
 -- TODO rename to 'commitLemmas' or something similar?
-translateLemmaRefs :: LibraryMonad a ()
-translateLemmaRefs = do
+commitLemmas :: LibraryMonad a ()
+commitLemmas = do
   state <- get
   let lemmaQ = libs_lemmaQueue state
       lemmaQ' = (flip M.map) lemmaQ $ \lemma ->
@@ -502,7 +495,7 @@ translateLemmaRefs = do
   where
     updateLemma :: String -> String -> Formula a -> Formula a
     updateLemma from to (Formula a (Lemma b c mp) e f) =mebeTrace $ Formula a (Lemma b c (updateProof from to mp)) e f
-      where mebeTrace =  (if from /= to then (trace $ "updating "++from++" to "++to) else id)
+      where mebeTrace =  id -- (if from /= to then (trace $ "updating "++from++" to "++to) else id)
     updateLemma from to f = f
     updateProof :: String -> String -> Maybe ProofSketch -> Maybe ProofSketch 
     updateProof from to (Just (lemmas, coords)) = Just (lemmas', coords)
