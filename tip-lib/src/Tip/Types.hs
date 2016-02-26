@@ -8,6 +8,7 @@ import Data.Generics.Geniplate
 import Data.Foldable (Foldable)
 import Data.Traversable (Traversable)
 import Data.Monoid
+import Data.Ratio
 
 import Control.Monad.State.Lazy
 
@@ -70,19 +71,21 @@ data Builtin
   | Implies
   | Equal
   | Distinct
-  | IntAdd
-  | IntSub
-  | IntMul
+  | NumAdd
+  | NumSub
+  | NumMul
+  | NumDiv
   | IntDiv
   | IntMod
-  | IntGt
-  | IntGe
-  | IntLt
-  | IntLe
+  | NumGt
+  | NumGe
+  | NumLt
+  | NumLe
+  | NumWiden
   deriving (Eq,Ord,Show)
 
-intBuiltin :: Builtin -> Bool
-intBuiltin b = b `elem` [IntAdd,IntSub,IntMul,IntDiv,IntMod,IntGt,IntGe,IntLt,IntLe]
+numBuiltin :: Builtin -> Bool
+numBuiltin b = b `elem` [NumAdd,NumSub,NumMul,NumDiv,IntDiv,IntMod,NumGt,NumGe,NumLt,NumLe,NumWiden]
 
 litBuiltin :: Builtin -> Bool
 litBuiltin Lit{} = True
@@ -125,7 +128,7 @@ data Type a
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
 data BuiltinType
-  = Integer | Boolean
+  = Integer | Real | Boolean
   deriving (Eq,Ord,Show)
 
 data Function a = Function
