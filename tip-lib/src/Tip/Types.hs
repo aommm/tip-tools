@@ -250,18 +250,20 @@ joinLibraries l1 l2 = runLibrary (initLibrary l1) $ do
   -- get next free name from l1
   state1 <- get
   let next1 = libs_next state1
+      next2 = nextFreeVar l2
+      next  = max next1 next2
       state2 = runLibraryState (initLibrary l2) $ do
                                                       -- set it to be next free name in l2
                                                       state2 <- get
-                                                      put $ state2 {libs_next = next1}
+                                                      put $ state2 {libs_next = next}
                                                       -- rename everything in l2 by removing all, then re-adding
                                                       lemmas <- getLemmas
-                                                      trace ("Im doing it!"++show lemmas) $ setLemmas M.empty
+                                                      trace ("Im doing it!"++(show.length) lemmas) $ setLemmas M.empty
                                                       forM_ lemmas $ \lemma -> do
                                                         name <- generateNewName
-                                                        lemma' <- trace ("new nam "++name) $ changeName lemma name
+                                                        lemma' <- trace ("old nam"++(show.getFmName) lemma++",new nam "++name) $ changeName lemma name
                                                         addLemma lemma'
-                                                      translateLemmaRefs
+                                                      trace "done it" $ translateLemmaRefs
   -- last free name in l2 is now in l1 also
   put state1 {libs_next = libs_next state2 }
   -- join l1 and l2, by addFunction, addDatatype, addLemma into l1 from l2
