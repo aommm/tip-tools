@@ -14,6 +14,7 @@ import qualified Tip.Parser.AbsTIPProof as PA (Start(..))
 import qualified Tip.Parser.ConvertProof as PC
 
 import Tip.Core
+import Tip.Library
 
 -- | Parse from a file. If the string is empty or "-", then reads from stdin.
 parseFile :: String -> IO (Either String (Theory Id))

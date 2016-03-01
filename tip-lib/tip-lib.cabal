@@ -23,6 +23,7 @@ library
   exposed-modules:
     Tip.Core
     Tip.Lint
+    Tip.Library
     Tip.Types
     Tip.Scope
     Tip.Fresh
