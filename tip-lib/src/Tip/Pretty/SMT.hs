@@ -5,6 +5,7 @@ import Text.PrettyPrint
 
 import Tip.Pretty
 import Tip.Types
+import Tip.Library
 import Tip.Core (ifView, topsort, neg, exprType, makeGlobal, uses, collectLets)
 import Tip.Rename
 --import qualified Tip.Parser.PrintTIP (Print, prt, render)

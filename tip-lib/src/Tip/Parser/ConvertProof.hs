@@ -5,6 +5,7 @@ import Tip.Parser.AbsTIPProof as A -- from A ...
 import Tip.Core               as T -- ... to T
 import Tip.Pretty
 import Tip.Pretty.SMT
+import Tip.Library
 
 import Text.PrettyPrint
 import Control.Applicative
