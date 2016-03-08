@@ -53,6 +53,9 @@ library
     Tip.CallGraph
     Tip.Utils.Specialiser
 
+    Tip.Parser.Convert
+    Tip.Parser.ConvertProof
+
     Tip.Pass.Booleans
   other-modules:
     Tip.Pass.AddMatch
@@ -83,8 +86,6 @@ library
     Tip.Parser.AbsTIPProof
     Tip.Parser.LexTIPProof
     Tip.Parser.ParTIPProof
-    Tip.Parser.Convert
-    Tip.Parser.ConvertProof
 
   hs-source-dirs:      src
   include-dirs:        src

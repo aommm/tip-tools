@@ -1,12 +1,12 @@
 all:
-	happy -gca Tip/Parser/ParTIP.y
-	alex -g Tip/Parser/LexTIP.x
-	ghc --make Tip/Parser/TestTIP.hs -o Tip/Parser/TestTIP
+	happy -gca Tip/Parser/ParTIPProof.y
+	alex -g Tip/Parser/LexTIPProof.x
+	ghc --make Tip/Parser/TestTIPProof.hs -o Tip/Parser/TestTIPProof
 
 clean:
 	-rm -f Tip/Parser/*.log Tip/Parser/*.aux Tip/Parser/*.hi Tip/Parser/*.o Tip/Parser/*.dvi
 
 distclean: clean
-	-rm -f Tip/Parser/DocTIP.* Tip/Parser/LexTIP.* Tip/Parser/ParTIP.* Tip/Parser/LayoutTIP.* Tip/Parser/SkelTIP.* Tip/Parser/PrintTIP.* Tip/Parser/TestTIP.* Tip/Parser/AbsTIP.* Tip/Parser/TestTIP Tip/Parser/ErrM.* Tip/Parser/SharedString.* Tip/Parser/ComposOp.* Tip/Parser/TIP.dtd Tip/Parser/XMLTIP.* Makefile*
+	-rm -f Tip/Parser/DocTIPProof.* Tip/Parser/LexTIPProof.* Tip/Parser/ParTIPProof.* Tip/Parser/LayoutTIPProof.* Tip/Parser/SkelTIPProof.* Tip/Parser/PrintTIPProof.* Tip/Parser/TestTIPProof.* Tip/Parser/AbsTIPProof.* Tip/Parser/TestTIPProof Tip/Parser/ErrM.* Tip/Parser/SharedString.* Tip/Parser/ComposOp.* Tip/Parser/TIPProof.dtd Tip/Parser/XMLTIPProof.* Makefile*
 		-rmdir -p Tip/Parser/
 
