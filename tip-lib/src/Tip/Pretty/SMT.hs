@@ -126,7 +126,7 @@ ppFormulaProof (Formula Assert (Lemma i (Just name) (Just proof)) tvs term) =
 ppFormulaProof x = ppFormula x
 
 proofPar :: (PrettyVar a) => [a] -> Doc -> Doc -> Doc -> Doc
-proofPar [] i expr proof = parExprSep (parens expr) [i, proof]
+proofPar [] i expr proof = parExprSep i [expr, proof]
 proofPar xs i expr proof = parExprSep "par" [parens (fsep (map ppVar xs)), i, expr, proof] 
 
 ppProof :: ProofSketch -> Doc
