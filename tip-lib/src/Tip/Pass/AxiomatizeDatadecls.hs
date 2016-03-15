@@ -5,7 +5,7 @@ module Tip.Pass.AxiomatizeDatadecls where
 #include "errors.h"
 import Tip.Core
 import Tip.Fresh
-import Tip.Scope
+import Tip.Scope (dataTypeGlobals, GlobalInfo(..), globalType)
 
 import Data.List (tails)
 import Data.Monoid
@@ -66,15 +66,18 @@ trDatatype ueq dt@Datatype{..} =
 
      return $
        declsToTheory $
-           [ SortDecl (Sort data_name data_tvs) ]
-        ++ [ SigDecl (Signature gbl (globalType gbl_info))
-           | let scp = scope emptyTheory { thy_datatypes = [dt] }
-           , (gbl,gbl_info) <- M.toList (Tip.Scope.globals scp)
-           , case gbl_info of
-               DiscriminatorInfo{} -> False
-               _ -> True
-           ]
+           datatypeSigs dt
         ++ map AssertDecl (if ueq then inj else domain:inj ++ distinct)
+
+datatypeSigs :: Name a => Datatype a -> [Decl a]
+datatypeSigs dt@Datatype{..} =
+     [ SortDecl (Sort data_name data_tvs) ]
+  ++ [ SigDecl (Signature gbl (globalType gbl_info))
+     | (gbl,gbl_info) <- dataTypeGlobals dt
+     , case gbl_info of
+         DiscriminatorInfo{} -> False
+         _ -> True
+     ]
 
 diag :: [a] -> [(a,a)]
 diag xs = [ (x,y) | x:ys <- tails xs, y <- ys ]
