@@ -216,10 +216,10 @@ addLemma f =  do
   case getFmName f of
       Just n  -> do
         case M.lookup n lemmas of
-          Just f' | f `equalModInfo` f' -> trace ("add lemma with name "++show n ++",already existed, equal body") $ return ()
-                  | otherwise -> trace ("add lemma with name "++show n ++",already existed, nonequal body"{-++show f ++ show f'-} ) $ checkAllLemmas f Nothing
-          Nothing -> trace ("add lemma with name "++show n ++",not already existed") $ checkAllLemmas f (Just n)
-      Nothing -> trace ("add lemma with no name") $ checkAllLemmas f Nothing
+          Just f' | f `equalModInfo` f' ->  return ()
+                  | otherwise -> checkAllLemmas f Nothing
+          Nothing -> checkAllLemmas f (Just n)
+      Nothing -> checkAllLemmas f Nothing
   where
     -- Unconditionally add lemma to queue
     addLemma' f = do
@@ -240,11 +240,11 @@ addLemma f =  do
             Nothing   -> generateNewName
             Just name -> return name
           f' <- changeName f name
-          trace ("  equal body not found, new name: "++show name) $ addLemma' f'
+          addLemma' f'
         1 -> do
           let name = head (M.keys matchingLemmas) -- existing name
           changeName f name
-          trace ("  equal body found, name: "++show name) $ return ()
+          return ()
           -- TODO: that formula and our formula may have been proven differently
           -- which proof is the simplest? Or should we store both proofs?
         _ -> error $ "Multiple identical lemmas found, equal to "++show f 
