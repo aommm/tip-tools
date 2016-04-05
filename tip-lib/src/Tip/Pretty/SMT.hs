@@ -130,11 +130,26 @@ proofPar [] i expr proof = parExprSep i [expr, proof]
 proofPar xs i expr proof = parExprSep "par" [parens (fsep (map ppVar xs)), i, expr, proof] 
 
 ppProof :: ProofSketch -> Doc
-ppProof p@(lemmas,coords) = apply ppLemmas (pp coords)
+-- ppProof p@(lemmas,coords) = apply ppLemmas (pp coords)
+--ppProof p = apply ppLemmas (pp (indVars p))
+ppProof p = parExpr ppLemmas [ppVars, ppMethod, ppExternal, ppInternal]
   where
     -- TODO: Must be able to  [String] -> Doc  in a nicer way?
     ppLemmas :: Doc
-    ppLemmas = pp (map text lemmas)
+    ppLemmas = pp (map text (lemmasUsed p))
+    ppVars = pp (indVars p)
+    ppMethod = case indMethod p of
+                 Structural -> "structural"
+    ppExternal = text (externalProver p)
+    ppInternal = text (internalProver p)
+
+  --{ lemmasUsed :: [String]
+  --, indVars :: [Int]
+  --, indMethod :: IndMethod
+  --, externalProver :: String
+  --, internalProver :: String
+  --}
+
 
 --proofToProof :: ProofSketch -> Proof
 --proofToProof (lemmas,coords) = Proof (IndVars coords') (LemmasUsed lemmas')

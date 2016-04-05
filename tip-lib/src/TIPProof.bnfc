@@ -93,9 +93,13 @@ NumLt.      Head ::= "<";
 NumLe.      Head ::= "<=";
 NumWiden.   Head ::= "to_real";
 
-Proof.      Proof      ::= "(" LemmasUsed IndVars ")";
-IndVars.    IndVars    ::= "[" [Integer] "]";
-LemmasUsed. LemmasUsed ::= "[" [LemmaName] "]";
+Proof.         Proof      ::= "(" LemmasUsed IndVars IndMethod Prover Prover ")";
+IndVars.       IndVars    ::= "[" [Integer] "]";
+IndStructural. IndMethod  ::= "structural";
+LemmasUsed.    LemmasUsed ::= "[" [LemmaName] "]";
+Prover.        Prover     ::= Symbol;
+
+
 LemmaName. LemmaName ::= Symbol;
 separator Integer ",";
 separator LemmaName ",";

@@ -213,9 +213,22 @@ setFmName _ _ = error "setFmName: can only set name to UserAsserted and Lemma"
 equalModInfo :: Eq a => Formula a -> Formula a -> Bool
 equalModInfo (Formula r1 _ t1 b1) (Formula r2 _ t2 b2) = r1 == r2 && t1 == t2 && b1 == b2
 
+data IndMethod = Structural
+  deriving (Eq, Ord, Show)
+
 -- lemmas used
 -- coords on which we did induction
-type ProofSketch = ([String],[Int])
+-- induction method
+-- external prover identifier (e.g. "z3-1.0")
+-- internal prover identifier (e.g. "hipspec-1.0")
+data ProofSketch = ProofSketch
+  { lemmasUsed :: [String]
+  , indVars :: [Int]
+  , indMethod :: IndMethod
+  , externalProver :: String
+  , internalProver :: String
+  }
+  deriving (Eq, Ord, Show)
 
 data Info a
   = Definition a
