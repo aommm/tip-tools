@@ -299,8 +299,8 @@ commitLemmas = do
       where mebeTrace =  id -- (if from /= to then (trace $ "updating "++from++" to "++to) else id)
     updateLemma from to f = f
     updateProof :: String -> String -> Maybe ProofSketch -> Maybe ProofSketch 
-    updateProof from to (Just (lemmas, coords)) = Just (lemmas', coords)
-      where lemmas' = replace from to lemmas
+    updateProof from to (Just proof) = Just $ proof {lemmasUsed = lemmas'}
+      where lemmas' = replace from to (lemmasUsed proof)
 
 
 replace :: Eq a => a -> a -> [a] -> [a]

@@ -169,18 +169,21 @@ trDeclAssert role (Par tvs) s expr mproof = do
   mapM newTyVar tvi
   let info = case mproof of
                Nothing -> UserAsserted (Just name)
-               Just (Proof (LemmasUsed ls) (IndVars is) ) ->
-                 let is' = map fromInteger is -- Integer -> Int
-                     ls' = map (\(LemmaName (Symbol (_,s))) -> s) ls -- LemmaName -> String
-                 in  Lemma 0 (Just name) (Just (ls',is')) -- TODO: what index to use here?
-
-  -- TODO: also check with OUR monad (can do that here?) that proof uses real symbols. trProof?
-  -- The lemmas should have been added before by previous trDeclAssert
-  -- The induction variables?
-  -- NO, this is not really ours. Library comes later, this is Theory
-
+               Just p ->
+                 let p' = trProof p
+                 in  Lemma 0 (Just name) (Just p') -- TODO: what index to use here?
   fm <- Formula role info tvi <$> trExpr expr
   return emptyTheory{ thy_asserts = [fm] }
+
+trProof :: Proof -> ProofSketch
+trProof (Proof (LemmasUsed ls) (IndVars is) method extProver intProver ) = 
+  let is' = map fromInteger is -- Integer -> Int
+      ls' = map (\(LemmaName s) -> trSymbol s) ls -- LemmaName -> String
+  in ProofSketch ls' is' (trMethod method) (trProver extProver) (trProver intProver)
+  where
+    trSymbol (Symbol (_,s)) = s
+    trProver (Prover s) = trSymbol s
+    trMethod IndStructural = Structural 
 
 
 emptyPar :: Par
