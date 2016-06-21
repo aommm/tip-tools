@@ -58,7 +58,7 @@ data Quant = Forall | Exists
 
 data QuantInfo = NoInfo | QuantIH Int
   deriving (Eq,Ord,Show)
-
+  
 data Case a = Case { case_pat :: Pattern a, case_rhs :: Expr a }
   deriving (Eq,Ord,Show,Functor,Foldable,Traversable)
 
